@@ -22,7 +22,7 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Latest build
 
-- Build status: successful (2026-10-20 14:59:41 +05:30).
+- Build status: not run after the latest source changes.
 - Last successful build: 2026-10-20 14:59:41 +05:30
 - Executable: UtilityX/Main/target/debug/winutilx-task1.exe
 
@@ -66,6 +66,8 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 - 2026-10-15: Fixed missing browser audio detection. GSMTC metadata is preferred when available; because its session manager requires the `globalMediaControl` package capability and the development executable is unpackaged, added Core Audio active-session detection plus a process/window-title fallback and media-key transport fallback. Compact hover now follows actual active audio sessions, and browser window titles can supply track context when GSMTC is unavailable. Canonical app rebuilt and running as PID 24476 from `UtilityX/Main/target/debug/winutilx-task1.exe` for user verification.
 
 - 2026-10-15: Removed all media detection, media-session polling, hover media UI, and expanded media transport controls at the user's direction. Hover now only displays the selected system statistics. Replaced the Controls tab media panel with buttons that open Windows Display and Sound settings. Frontend/native build succeeded; canonical app is running as PID 24696 from `UtilityX/Main/target/debug/winutilx-task1.exe`.
+
+- 2026-10-20: Moved Shelf to the first tab and Controls to second-last. Replaced Shelf demo entries and simulated actions with session-memory file staging, link/text capture, WebP conversion, ZIP creation, download, removal, and clear actions. Build not run after these source changes; native drag-out remains pending.
 
 
 

@@ -62,7 +62,6 @@ const THEME_ACCENTS = {
 };
 
 const TABS = [
-  { id: 'controls', label: 'Controls', icon: Sliders },
   { id: 'shelf', label: 'Shelf', icon: Inbox },
   { id: 'today', label: 'Today', icon: Calendar },
   { id: 'stats', label: 'Stats', icon: Activity },
@@ -70,13 +69,14 @@ const TABS = [
   { id: 'apps', label: 'Apps', icon: Grid },
   { id: 'wallpaper', label: 'Wallpaper', icon: ImageIcon },
   { id: 'mobile', label: 'Mobile', icon: Smartphone },
+  { id: 'controls', label: 'Controls', icon: Sliders },
   { id: 'power', label: 'Power', icon: Power },
 ];
 
 export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent: wallpaperAccent }) {
   // Stages: 'idle' | 'hovered' | 'full'
   const [stage, setStage] = useState('idle');
-  const [activeTab, setActiveTab] = useState('controls');
+  const [activeTab, setActiveTab] = useState('shelf');
   const [accentTheme, setAccentTheme] = useState('neon');
   const [hoverDetails, setHoverDetails] = useState(() => {
     try {
