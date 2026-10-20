@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/winutilx-task1",
+    "spikes/spike_a_dragout",
+    "spikes/spike_b_handle",
+    "spikes/spike_c_gateway",
+    "spikes/spike-tauri-baseline",
+]

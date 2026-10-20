@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "WinUtilX",
+  "version": "0.1.0",
+  "identifier": "com.winutilx.desktop",
+  "build": {
+    "frontendDist": "../../spikes/spike-tauri-baseline/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "WinUtilX",
+        "label": "main",
+        "url": "index.html",
+        "width": 880,
+        "height": 72,
+        "decorations": false,
+        "transparent": true,
+        "noRedirectionBitmap": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "resizable": false,
+        "visible": false
+      }
+    ]
+  }
+}
+
+

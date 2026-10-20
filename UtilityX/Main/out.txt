@@ -1,0 +1,10 @@
+✅ WinUtilX Native Desktop Island Alive (Compact 380x68 Center X=768.0, Y=0)
+Tauri Event: Ready
+Tauri Event: WindowEvent { label: "main", event: Resized(PhysicalSize { width: 475, height: 85 }) }
+Tauri Event: WindowEvent { label: "main", event: Resized(PhysicalSize { width: 475, height: 85 }) }
+Tauri Event: WindowEvent { label: "main", event: Resized(PhysicalSize { width: 475, height: 85 }) }
+Tauri Event: WindowEvent { label: "main", event: Resized(PhysicalSize { width: 475, height: 85 }) }
+Tauri Event: WindowEvent { label: "main", event: Moved(PhysicalPosition { x: 723, y: 0 }) }
+Tauri Event: MainEventsCleared
+Tauri Event: WindowEvent { label: "main", event: Focused(true) }
+Tauri Event: MainEventsCleared

@@ -1,0 +1,11 @@
+[package]
+name = "spike-tauri-baseline"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+tauri = "2"
+
+[build-dependencies]
+tauri-build = "2"

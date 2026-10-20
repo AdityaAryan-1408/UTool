@@ -1,0 +1,171 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    font-family: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
+    background-color: transparent !important;
+    color: #F5F7FF;
+    overflow: hidden;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  button { -webkit-tap-highlight-color: transparent; }
+  ::selection { background: rgba(255, 255, 255, 0.28); color: #F4F5EF; }
+}
+
+/* Glassmorphism & Aura effects */
+.glass-panel {
+  background: rgba(0, 0, 0, 0.98);
+  backdrop-filter: blur(18px) saturate(110%);
+  -webkit-backdrop-filter: blur(18px) saturate(110%);
+  border: 1px solid rgba(232, 233, 227, 0.09);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.glass-island {
+  background: linear-gradient(180deg, #050505 0%, #000000 100%);
+  border: 1px solid rgba(232, 233, 227, 0.09);
+  border-top: none;
+}
+
+.glow-cyan, .glow-blue, .glow-purple { box-shadow: 0 0 18px rgba(255, 255, 255, 0.12); }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(232, 233, 227, 0.15);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(232, 233, 227, 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Sparkle Shine Keyframes */
+@keyframes sparkleShine {
+  0%, 100% { opacity: 0.2; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+.animate-sparkle {
+  animation: sparkleShine 2s infinite ease-in-out;
+}
+
+/* UtilityX AMOLED palette */
+:root {
+  color-scheme: dark;
+  --ui-black: #000000;
+  --ui-surface: #070707;
+  --ui-raised: #101010;
+  --ui-white: #F5F7FF;
+  --ui-white-soft: rgba(245, 247, 255, 0.10);
+  --ui-white-line: rgba(245, 247, 255, 0.16);
+}
+
+.glass-panel {
+  background-color: rgba(0, 0, 0, 0.98);
+  border-color: rgba(245, 247, 255, 0.10);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.65);
+}
+.glass-island {
+  background: linear-gradient(180deg, #050505 0%, #000000 100%);
+  border-color: rgba(245, 247, 255, 0.12);
+}
+.glow-cyan, .glow-blue, .glow-purple {
+  box-shadow: 0 0 16px rgba(245, 247, 255, 0.20);
+}
+
+[class*="text-cyan-"], [class*="text-sky-"], [class*="text-blue-"], [class*="text-indigo-"],
+[class*="text-purple-"], [class*="text-violet-"], [class*="text-amber-"], [class*="text-yellow-"],
+[class*="text-orange-"], [class*="text-rose-"], [class*="text-red-"], [class*="text-emerald-"],
+[class*="text-green-"], [class*="text-teal-"], [class*="text-lime-"] { color: var(--ui-white) !important; }
+[class*="bg-cyan-"], [class*="bg-sky-"], [class*="bg-blue-"], [class*="bg-indigo-"],
+[class*="bg-purple-"], [class*="bg-violet-"], [class*="bg-amber-"], [class*="bg-yellow-"],
+[class*="bg-orange-"], [class*="bg-rose-"], [class*="bg-red-"], [class*="bg-emerald-"],
+[class*="bg-green-"], [class*="bg-teal-"], [class*="bg-lime-"] { background-color: var(--ui-white-soft) !important; }
+[class~="bg-cyan-500"], [class~="bg-sky-500"], [class~="bg-blue-500"], [class~="bg-indigo-500"],
+[class~="bg-purple-500"], [class~="bg-violet-500"], [class~="bg-amber-500"], [class~="bg-yellow-500"],
+[class~="bg-orange-500"], [class~="bg-rose-500"], [class~="bg-red-500"], [class~="bg-emerald-500"],
+[class~="bg-green-500"], [class~="bg-teal-500"], [class~="bg-lime-500"] {
+  background-color: var(--ui-white) !important;
+  color: #000000 !important;
+}
+[class*="border-cyan-"], [class*="border-sky-"], [class*="border-blue-"], [class*="border-indigo-"],
+[class*="border-purple-"], [class*="border-violet-"], [class*="border-amber-"], [class*="border-yellow-"],
+[class*="border-orange-"], [class*="border-rose-"], [class*="border-red-"], [class*="border-emerald-"],
+[class*="border-green-"], [class*="border-teal-"], [class*="border-lime-"] { border-color: var(--ui-white-line) !important; }
+[class*="from-cyan-"], [class*="from-sky-"], [class*="from-blue-"], [class*="from-indigo-"],
+[class*="from-purple-"], [class*="from-violet-"], [class*="from-amber-"], [class*="from-yellow-"],
+[class*="from-orange-"], [class*="from-rose-"], [class*="from-red-"], [class*="from-emerald-"],
+[class*="from-green-"], [class*="from-teal-"], [class*="from-lime-"] {
+  --tw-gradient-from: rgba(245, 247, 255, 0.10) !important;
+  --tw-gradient-to: rgba(245, 247, 255, 0) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+[class*="to-cyan-"], [class*="to-sky-"], [class*="to-blue-"], [class*="to-indigo-"],
+[class*="to-purple-"], [class*="to-violet-"], [class*="to-amber-"], [class*="to-yellow-"],
+[class*="to-orange-"], [class*="to-rose-"], [class*="to-red-"], [class*="to-emerald-"],
+[class*="to-green-"], [class*="to-teal-"], [class*="to-lime-"] { --tw-gradient-to: rgba(245, 247, 255, 0.03) !important; }
+[class*="shadow-cyan-"], [class*="shadow-sky-"], [class*="shadow-blue-"], [class*="shadow-indigo-"],
+[class*="shadow-purple-"], [class*="shadow-violet-"], [class*="shadow-amber-"], [class*="shadow-yellow-"],
+[class*="shadow-orange-"], [class*="shadow-rose-"], [class*="shadow-red-"], [class*="shadow-emerald-"],
+[class*="shadow-green-"], [class*="shadow-teal-"], [class*="shadow-lime-"] { --tw-shadow-color: rgba(245, 247, 255, 0.14) !important; }
+
+[class*="bg-slate-950"] { background-color: #000000 !important; }
+[class*="bg-slate-900"] { background-color: #050505 !important; }
+[class*="bg-slate-800"] { background-color: #0B0B0B !important; }
+[class*="bg-slate-700"] { background-color: #141414 !important; }
+[class*="bg-slate-600"] { background-color: #202020 !important; }
+[class*="bg-slate-500"] { background-color: #2B2B2B !important; }
+[class*="text-slate-50"] { color: #FAFAFA !important; }
+[class*="text-slate-100"] { color: #F4F4F5 !important; }
+[class*="text-slate-200"] { color: #E4E4E7 !important; }
+[class*="text-slate-300"] { color: #D4D4D8 !important; }
+[class*="text-slate-400"] { color: #A1A1AA !important; }
+[class*="text-slate-500"] { color: #71717A !important; }
+[class*="text-slate-600"] { color: #52525B !important; }
+[class*="border-slate-"] { border-color: rgba(245, 247, 255, 0.12) !important; }
+/* Native-looking monochrome controls tab sliders */
+.control-range {
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(245, 247, 255, 0.18);
+  accent-color: #F5F7FF;
+  cursor: pointer;
+}
+.control-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #F5F7FF;
+  border: 2px solid #080808;
+  box-shadow: 0 0 0 1px rgba(245, 247, 255, 0.45);
+}
+.control-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #F5F7FF;
+  border: 2px solid #080808;
+  box-shadow: 0 0 0 1px rgba(245, 247, 255, 0.45);
+}
+

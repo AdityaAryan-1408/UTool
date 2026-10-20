@@ -1,0 +1,18 @@
+# Rust build outputs
+target/
+**/target/
+*.exe
+*.pdb
+*.dll
+
+# Node / JS dependencies and build artifacts
+node_modules/
+**/node_modules/
+dist/assets/
+**/dist/assets/
+
+# Planning & design documents (kept local for now)
+plan/
+prompt.md
+architecture-review.md
+Windows_Edge_Utility_Architecture_Optimization.md

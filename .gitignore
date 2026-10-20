@@ -1,0 +1,3 @@
+﻿# Keep legacy sibling copies outside this UTool repository.
+/WinUtilX/
+/Test/
