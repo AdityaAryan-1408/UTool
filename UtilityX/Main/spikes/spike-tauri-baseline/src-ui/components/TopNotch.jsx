@@ -77,6 +77,9 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
   // Stages: 'idle' | 'hovered' | 'full'
   const [stage, setStage] = useState('idle');
   const [activeTab, setActiveTab] = useState('today');
+  const [recentClipboardQueue, setRecentClipboardQueue] = useState([]);
+  const [clipboardQueueUntil, setClipboardQueueUntil] = useState(0);
+  const [queueClock, setQueueClock] = useState(Date.now());
   const [accentTheme, setAccentTheme] = useState('neon');
   const [hoverDetails, setHoverDetails] = useState(() => {
     try {
@@ -85,6 +88,32 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
     } catch { return ['cpu', 'memory']; }
   });
   const notchRef = useRef(null);
+
+  useEffect(() => {
+    const refreshQueue = async (copiedNow = false) => {
+      const history = await invokeTauri('clipboard_list_items');
+      if (!Array.isArray(history)) return;
+      const copiedWithinMinute = history.filter((item) => Date.now() / 1000 - item.copiedAt < 60);
+      setRecentClipboardQueue(copiedWithinMinute.slice(-5));
+      if (copiedNow) setClipboardQueueUntil(Date.now() + 60_000);
+      else if (copiedWithinMinute.length) {
+        const newest = copiedWithinMinute[copiedWithinMinute.length - 1];
+        setClipboardQueueUntil(newest.copiedAt * 1000 + 60_000);
+      }
+    };
+    const handleClipboardUpdate = () => refreshQueue(true);
+    refreshQueue();
+    window.addEventListener('utilityx-clipboard-history-updated', handleClipboardUpdate);
+    const timer = window.setInterval(() => setQueueClock(Date.now()), 1000);
+    return () => {
+      window.removeEventListener('utilityx-clipboard-history-updated', handleClipboardUpdate);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    invokeTauri('set_clipboard_focus_mode', { enabled: activeTab === 'clipboard' });
+  }, [activeTab]);
 
   useEffect(() => {
     const openShelfForDrop = () => {
@@ -132,6 +161,8 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
     clock: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   };
   const hoveredWidth = Math.min(444, 270 + hoverDetails.length * 58);
+  const clipboardQueueVisible = clipboardQueueUntil > queueClock && recentClipboardQueue.length > 0;
+  const newestClipboardItem = recentClipboardQueue[recentClipboardQueue.length - 1];
 
   useEffect(() => {
     try { localStorage.setItem('winutilx-accent-theme', accentTheme); } catch {}
@@ -207,6 +238,9 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
     };
 
     const handleBlur = () => {
+      if (activeTab === 'clipboard') {
+        invokeTauri('set_clipboard_focus_mode', { enabled: true });
+      }
       if (stage === 'full' && !isSettingsOpen) {
         changeStage('idle');
       }
@@ -218,7 +252,7 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
       window.removeEventListener('mousedown', handleClickOutside);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [stage, isSettingsOpen]);
+  }, [stage, isSettingsOpen, activeTab]);
 
   // Current dynamic height and width of the notch
   const targetWidth = stage === 'full' ? 840 : stage === 'hovered' ? hoveredWidth : 270;
@@ -334,7 +368,13 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
 
                 {/* Right Badge: Standby or Open Action */}
                 <div className="flex items-center shrink-0">
-                  {stage === 'hovered' ? (
+                  {clipboardQueueVisible ? (
+                    <div className="flex items-center gap-1.5 min-w-0 text-slate-200" title={newestClipboardItem?.preview}>
+                      <Clipboard className="w-3.5 h-3.5 shrink-0" style={{ color: accentColor }} />
+                      <span className="text-[10px] font-mono shrink-0">{recentClipboardQueue.length}</span>
+                      <span className="text-[10px] truncate max-w-[86px]">{newestClipboardItem?.kind === 'image' ? 'Image' : newestClipboardItem?.preview}</span>
+                    </div>
+                  ) : stage === 'hovered' ? (
                     <div
                       className="flex items-center gap-1 font-semibold transition-all duration-150"
                       style={{ color: accentColor }}
@@ -413,8 +453,24 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
               </button>
             </div>
 
+            {clipboardQueueVisible && (
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white/[0.06] border border-white/10 shrink-0">
+                <Clipboard className="w-3.5 h-3.5 text-white/80 shrink-0" />
+                <span className="text-[10px] font-semibold text-white shrink-0">Recent copy queue</span>
+                <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+                  {recentClipboardQueue.map((item, index) => (
+                    <span key={item.id} title={item.preview} className="flex items-center gap-1 min-w-0 px-2 py-0.5 rounded-md bg-black/30 text-[10px] text-slate-300">
+                      <span className="text-white/50">{index + 1}</span>
+                      <span className="truncate">{item.kind === 'image' ? 'Image' : item.preview}</span>
+                    </span>
+                  ))}
+                </div>
+                <span className="text-[10px] font-mono text-slate-500 shrink-0">{Math.max(1, Math.ceil((clipboardQueueUntil - queueClock) / 1000))}s</span>
+              </div>
+            )}
+
             {/* Tab Body View */}
-            <div className="flex-1 overflow-hidden py-2.5">
+            <div className="flex-1 overflow-hidden py-2.5 min-h-0">
               {activeTab === 'controls' && (
                 <ControlsTab 
                   accent={accent}

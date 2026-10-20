@@ -22,7 +22,7 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Latest build
 
-- Frontend production build and canonical native launcher build both succeeded after the 2026-10-20 Today work.
+- Frontend production build and native `cargo build -p winutilx-task1` succeeded after the Clipboard implementation.
 - Last successful full build: 2026-10-20.
 - Executable: UtilityX/Main/target/debug/winutilx-task1.exe
 
@@ -33,6 +33,7 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 - 2026-10-20: Fixed Shelf drag-out to start native Windows file dragging after pointer movement, added native notch drop-to-Shelf routing, Ctrl+V file import, ZIP retest readiness, and three-day automatic expiry through a Windows scheduled task. Manual remove/clear remain available. Frontend and native builds succeeded; canonical app is running for user retest.
 - 2026-10-20: Replaced the Shelf drag source's hand-built file IDataObject with a Windows Shell-created object; changed Download to use Windows Save As; added a button to open the Shelf storage folder. Browser URL pasting still does not start network downloads; clipboard import currently accepts local file paths.
 - 2026-10-20: Moved Today to the first tab and Shelf to second. Replaced static Today tasks/week/appointment/weather values with saved, date-based tasks, a dynamic week strip, a persistent 25/50-minute focus timer, configurable current weather by city, and a persistent quick note that clears on request and is replaced by pasted text.
+- 2026-10-20: Replaced Clipboard mock items with automatic local text/image capture, copy-again/delete/clear actions, a one-minute recent-copy queue visible across tabs, and Ctrl+Shift+V batch paste oldest-to-newest. Clipboard focus mode keeps copy controls non-activating and allows a temporary focus mode for search. Frontend and native builds succeeded; UtilityX is running as PID 2336 for queue verification.
 
 
 
@@ -42,7 +43,7 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Runtime status
 
-- Server status: running from the canonical launcher for the user's manual Today verification (PID 21232).
+- Server status: running from the canonical launcher for the user's Clipboard queue verification (PID 2336).
 - Running process: PID 28568, `UtilityX/Main/target/debug/winutilx-task1.exe`.
 - 2026-10-20: Removed the Shelf drag-out button, frontend handler, native command, and drag implementation at the user's direction. Copy, Save As, and Delete remain available. Frontend and native builds succeeded; relaunching for manual retest.
 - 2026-10-20: Follow-up Shelf retest fixes: use a Shell-created data object and non-canonical AppData path for drag-out; add Save As and Shelf Location actions; capture pasted image data from web pages. Pasting a URL does not start a network download.
@@ -72,6 +73,8 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 - 2026-10-15: Removed all media detection, media-session polling, hover media UI, and expanded media transport controls at the user's direction. Hover now only displays the selected system statistics. Replaced the Controls tab media panel with buttons that open Windows Display and Sound settings. Frontend/native build succeeded; canonical app is running as PID 24696 from `UtilityX/Main/target/debug/winutilx-task1.exe`.
 
 - 2026-10-20: Moved Shelf to the first tab and Controls to second-last. Implemented persistent per-item Shelf storage under the app's local app-data folder, restore on app start, native Windows file drag-out, open with the system default app, reveal in Explorer, copy-file-to-clipboard for pasting into other apps, download, remove, clear, WebP conversion, and ZIP creation. Frontend production build and native `cargo check` succeeded. The app has not been launched for runtime testing; the user will verify the features manually.
+
+
 
 
 

@@ -1,6 +1,7 @@
 #![windows_subsystem = "windows"]
 
 mod shelf;
+mod clipboard;
 
 use std::mem::zeroed;
 use std::ffi::c_void;
@@ -501,6 +502,12 @@ fn show_main_window(window: tauri::WebviewWindow) {
     let _ = window.set_skip_taskbar(true);
 }
 
+#[tauri::command]
+fn set_clipboard_focus_mode(window: tauri::WebviewWindow, enabled: bool) {
+    let _ = window.set_focusable(!enabled);
+    if !enabled { let _ = window.set_focus(); }
+}
+
 fn main() {
     let arguments: Vec<String> = std::env::args().collect();
     if let Some(index) = arguments.iter().position(|argument| argument == "--utilityx-shelf-cleanup") {
@@ -513,6 +520,7 @@ fn main() {
     }
     tauri::Builder::default()
         .setup(|app| {
+            clipboard::start_listener(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
                 let (x, y, screen_w, screen_h) = get_screen_logical_bounds(&window);
 
@@ -556,16 +564,23 @@ fn main() {
 
                 // Background Global Hotkey Listener: Alt+\ and Ctrl+Shift+H to toggle visibility
                 let window_hotkey = window.clone();
+                let hotkey_app = app.handle().clone();
                 std::thread::spawn(move || {
                     unsafe {
                         // Hotkey 101: Alt + \ (VK_OEM_5 = 0xDC)
                         RegisterHotKey(std::ptr::null_mut(), 101, MOD_ALT, 0xDC);
                         // Hotkey 102: Ctrl + Shift + H ('H' = 0x48)
                         RegisterHotKey(std::ptr::null_mut(), 102, MOD_CONTROL | MOD_SHIFT, 0x48);
+                        // Ctrl+Shift+V pastes the clipboard history in original copy order.
+                        RegisterHotKey(std::ptr::null_mut(), 103, MOD_CONTROL | MOD_SHIFT, 0x56);
 
                         let mut msg: windows_sys::Win32::UI::WindowsAndMessaging::MSG = zeroed();
                         while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
                             if msg.message == WM_HOTKEY {
+                                if msg.wParam == 103 {
+                                    let _ = clipboard::batch_paste(&hotkey_app);
+                                    continue;
+                                }
                                 if let Ok(visible) = window_hotkey.is_visible() {
                                     if visible {
                                         let _ = window_hotkey.hide();
@@ -598,6 +613,12 @@ fn main() {
             toggle_notch_visibility,
             set_fullscreen_overlay,
             show_main_window,
+            set_clipboard_focus_mode,
+            clipboard::clipboard_list_items,
+            clipboard::clipboard_read_item,
+            clipboard::clipboard_copy_item,
+            clipboard::clipboard_delete_item,
+            clipboard::clipboard_clear,
             shelf::shelf_list_files,
             shelf::shelf_read_file,
             shelf::shelf_store_file,
