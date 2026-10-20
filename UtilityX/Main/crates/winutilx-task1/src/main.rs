@@ -1,5 +1,7 @@
 #![windows_subsystem = "windows"]
 
+mod shelf;
+
 use std::mem::zeroed;
 use std::ffi::c_void;
 use std::os::windows::process::CommandExt;
@@ -500,6 +502,15 @@ fn show_main_window(window: tauri::WebviewWindow) {
 }
 
 fn main() {
+    let arguments: Vec<String> = std::env::args().collect();
+    if let Some(index) = arguments.iter().position(|argument| argument == "--utilityx-shelf-cleanup") {
+        if let Some(path) = arguments.get(index + 1) {
+            let _ = shelf::cleanup_expired_shelf_at_path(std::path::Path::new(path));
+        } else {
+            let _ = shelf::cleanup_expired_shelf_for_current_user();
+        }
+        return;
+    }
     tauri::Builder::default()
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
@@ -512,6 +523,34 @@ fn main() {
                 let _ = window.set_always_on_top(true);
                 let _ = window.set_skip_taskbar(true);
                 apply_notch_region(&window, 270.0, 38.0, 16.0);
+
+                let drop_window = window.clone();
+                let drop_app = app.handle().clone();
+                window.on_window_event(move |event| {
+                    match event {
+                        tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Enter { .. }) => {
+                            REGION_ANIMATION_ID.fetch_add(1, Ordering::AcqRel);
+                            if let Ok(mut region) = CURRENT_NOTCH_REGION.lock() {
+                                *region = NotchRegionMetrics { width: 840.0, height: 430.0, radius: 28.0 };
+                            }
+                            apply_notch_region(&drop_window, 840.0, 430.0, 28.0);
+                            let _ = drop_window.eval("window.dispatchEvent(new Event('utilityx-shelf-drag-enter'))");
+                        }
+                        tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
+                            match shelf::import_external_paths(&drop_app, paths) {
+                                Ok(count) => {
+                                    let js = format!("window.dispatchEvent(new CustomEvent('utilityx-shelf-files-dropped', {{ detail: {{ count: {count} }} }}))");
+                                    let _ = drop_window.eval(&js);
+                                }
+                                Err(error) => {
+                                    let message = serde_json::to_string(&error).unwrap_or_else(|_| "'Could not import dropped files'".into());
+                                    let _ = drop_window.eval(&format!("window.dispatchEvent(new CustomEvent('utilityx-shelf-drop-error', {{ detail: {message} }}))"));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                });
 
                 println!("✅ WinUtilX Native Desktop Island Alive (full-screen transparent WebView)");
 
@@ -558,7 +597,19 @@ fn main() {
             update_notch_stage,
             toggle_notch_visibility,
             set_fullscreen_overlay,
-            show_main_window
+            show_main_window,
+            shelf::shelf_list_files,
+            shelf::shelf_read_file,
+            shelf::shelf_store_file,
+            shelf::shelf_delete_file,
+            shelf::shelf_clear_files,
+            shelf::shelf_open_file,
+            shelf::shelf_reveal_file,
+            shelf::shelf_get_location,
+            shelf::shelf_open_location,
+            shelf::shelf_save_file_as,
+            shelf::shelf_copy_file,
+            shelf::shelf_import_clipboard_files
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

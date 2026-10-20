@@ -26,7 +26,7 @@ import AppsTab from './tabs/AppsTab';
 import WallpaperTab from './tabs/WallpaperTab';
 import MobileTab from './tabs/MobileTab';
 import PowerTab from './tabs/PowerTab';
-import { invokeTauri } from '../utils/tauriBridge';
+import { invokeTauri, invokeTauriStrict } from '../utils/tauriBridge';
 
 // Apple-calibrated fluid cubic bezier curve: silky-smooth deceleration
 const TRANSITION_CONFIG = {
@@ -39,7 +39,7 @@ const TRANSITION_CONFIG = {
 const TAB_HEIGHTS = {
   controls: 490,
   shelf: 430,     // Staged cards and drop zone
-  today: 440,
+  today: 490,
   stats: 450,
   clipboard: 460,
   apps: 470,
@@ -62,8 +62,8 @@ const THEME_ACCENTS = {
 };
 
 const TABS = [
-  { id: 'shelf', label: 'Shelf', icon: Inbox },
   { id: 'today', label: 'Today', icon: Calendar },
+  { id: 'shelf', label: 'Shelf', icon: Inbox },
   { id: 'stats', label: 'Stats', icon: Activity },
   { id: 'clipboard', label: 'Clipboard', icon: Clipboard },
   { id: 'apps', label: 'Apps', icon: Grid },
@@ -76,7 +76,7 @@ const TABS = [
 export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent: wallpaperAccent }) {
   // Stages: 'idle' | 'hovered' | 'full'
   const [stage, setStage] = useState('idle');
-  const [activeTab, setActiveTab] = useState('shelf');
+  const [activeTab, setActiveTab] = useState('today');
   const [accentTheme, setAccentTheme] = useState('neon');
   const [hoverDetails, setHoverDetails] = useState(() => {
     try {
@@ -85,6 +85,32 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
     } catch { return ['cpu', 'memory']; }
   });
   const notchRef = useRef(null);
+
+  useEffect(() => {
+    const openShelfForDrop = () => {
+      setActiveTab('shelf');
+      setStage('full');
+    };
+    window.addEventListener('utilityx-shelf-drag-enter', openShelfForDrop);
+    return () => window.removeEventListener('utilityx-shelf-drag-enter', openShelfForDrop);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'shelf') return undefined;
+    const importClipboardFiles = async (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'v') return;
+      try {
+        const count = await invokeTauriStrict('shelf_import_clipboard_files');
+        if (count > 0) {
+          window.dispatchEvent(new CustomEvent('utilityx-shelf-files-dropped', { detail: { count } }));
+        }
+      } catch (error) {
+        window.dispatchEvent(new CustomEvent('utilityx-shelf-drop-error', { detail: error?.message || String(error) }));
+      }
+    };
+    window.addEventListener('keydown', importClipboardFiles);
+    return () => window.removeEventListener('keydown', importClipboardFiles);
+  }, [activeTab]);
 
   // Live Windows telemetry from native backend
   const [telemetry, setTelemetry] = useState({
