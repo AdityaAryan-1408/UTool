@@ -1,6 +1,6 @@
 ﻿# UtilityX current state
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 ## Source of truth
 
@@ -22,18 +22,22 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Latest build
 
-- Frontend production build and native `cargo build -p winutilx-task1` succeeded after the Clipboard implementation.
-- Last successful full build: 2026-10-20.
+- Apps tab: Windows Start menu, AppX manifest, and uninstall-registry catalog with 48 px app icons where Windows provides icon resources, alphabetical search/listing, launch actions where available, persistent pins/notes/reminders, per-app visual hiding, and a restore/rescan action. Android remains a phone-companion placeholder. Stats layout no longer includes its redundant bottom minimize row; speed downloads use repeatable 50 MB requests and error text has reserved space. Frontend and native builds succeeded; UtilityX is running as PID 24556 for manual verification.
+- Last successful full build: 2026-10-21 (Apps tab implementation).
 - Executable: UtilityX/Main/target/debug/winutilx-task1.exe
 
 ## Change log
 
+- 2026-10-21: Added Windows app icons and expanded app discovery to AppX manifests and uninstall registry entries, with persisted visual hiding and Restore/rescan. Removed the Stats footer row that crowded the battery card, constrained network error text to its card, and reduced Cloudflare download chunks to 50 MB. Frontend and native builds succeeded; canonical UtilityX is running as PID 24556 for user verification.
+- 2026-10-21: Replaced Apps mock data with Windows Start menu and registered installed-app discovery, A–Z filtering, app launching, pinned apps, persistent per-app notes/reminders, and an Android placeholder for future phone-companion support. Frontend and native builds succeeded; the app remains stopped for manual verification.
 - 2026-10-14: Established the canonical source paths and launcher workflow to prevent stale executable launches.
 - 2026-10-14: Switched the UI to AMOLED black with neon-white accents and synchronized native hit-region motion with the notch animation.
 - 2026-10-20: Fixed Shelf drag-out to start native Windows file dragging after pointer movement, added native notch drop-to-Shelf routing, Ctrl+V file import, ZIP retest readiness, and three-day automatic expiry through a Windows scheduled task. Manual remove/clear remain available. Frontend and native builds succeeded; canonical app is running for user retest.
 - 2026-10-20: Replaced the Shelf drag source's hand-built file IDataObject with a Windows Shell-created object; changed Download to use Windows Save As; added a button to open the Shelf storage folder. Browser URL pasting still does not start network downloads; clipboard import currently accepts local file paths.
 - 2026-10-20: Moved Today to the first tab and Shelf to second. Replaced static Today tasks/week/appointment/weather values with saved, date-based tasks, a dynamic week strip, a persistent 25/50-minute focus timer, configurable current weather by city, and a persistent quick note that clears on request and is replaced by pasted text.
 - 2026-10-20: Replaced Clipboard mock items with automatic local text/image capture, copy-again/delete/clear actions, a one-minute recent-copy queue visible across tabs, and Ctrl+Shift+V batch paste oldest-to-newest. Clipboard focus mode keeps copy controls non-activating and allows a temporary focus mode for search. Frontend and native builds succeeded; UtilityX is running as PID 2336 for queue verification.
+- 2026-10-20: Replaced Stats mock values with live Windows CPU, memory, 3D GPU counter (when available), system-drive, network traffic, battery, uptime, and top-process data. The connection test now measures TCP latency and jitter. Frontend build and native check succeeded; awaiting canonical full build and manual verification.
+- 2026-10-20: Replaced the Stats TCP-only card with download and upload throughput checks, ping, jitter, and active adapter name; removed the bottom-left footer note that overlapped the battery row. After WebView fetch returned `Failed to fetch`, speed measurements moved to native WinHTTP and were set to 30 seconds per direction. Reworked upload requests to fixed-size bodies and exposed native error details. Added a time-based notch greeting with a locally saved customizable name. Frontend/native builds succeeded; UtilityX is running as PID 30704 for manual verification.
 
 
 
@@ -43,8 +47,8 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Runtime status
 
-- Server status: running from the canonical launcher for the user's Clipboard queue verification (PID 2336).
-- Running process: PID 28568, `UtilityX/Main/target/debug/winutilx-task1.exe`.
+- Server status: running the current Stats and greeting build (PID 30704) for manual verification.
+- Running process: PID 30704, `UtilityX/Main/target/debug/winutilx-task1.exe`.
 - 2026-10-20: Removed the Shelf drag-out button, frontend handler, native command, and drag implementation at the user's direction. Copy, Save As, and Delete remain available. Frontend and native builds succeeded; relaunching for manual retest.
 - 2026-10-20: Follow-up Shelf retest fixes: use a Shell-created data object and non-canonical AppData path for drag-out; add Save As and Shelf Location actions; capture pasted image data from web pages. Pasting a URL does not start a network download.
 
@@ -73,24 +77,6 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 - 2026-10-15: Removed all media detection, media-session polling, hover media UI, and expanded media transport controls at the user's direction. Hover now only displays the selected system statistics. Replaced the Controls tab media panel with buttons that open Windows Display and Sound settings. Frontend/native build succeeded; canonical app is running as PID 24696 from `UtilityX/Main/target/debug/winutilx-task1.exe`.
 
 - 2026-10-20: Moved Shelf to the first tab and Controls to second-last. Implemented persistent per-item Shelf storage under the app's local app-data folder, restore on app start, native Windows file drag-out, open with the system default app, reveal in Explorer, copy-file-to-clipboard for pasting into other apps, download, remove, clear, WebP conversion, and ZIP creation. Frontend production build and native `cargo check` succeeded. The app has not been launched for runtime testing; the user will verify the features manually.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

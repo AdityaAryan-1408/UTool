@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowUpRight, BatteryMedium, Check, Clock3, Keyboard, Monitor,
-  Palette, RotateCcw, Settings2, SlidersHorizontal, Wifi, X,
+  Palette, RotateCcw, Settings2, SlidersHorizontal, UserRound, Wifi, X,
 } from 'lucide-react';
+import { getNotchGreeting } from '../utils/notchGreeting';
 
 const HOVER_OPTIONS = [
   { id: 'cpu', label: 'Processor', detail: 'Current CPU load', sample: 'CPU 8%', icon: Settings2 },
@@ -22,6 +23,7 @@ const SECTIONS = [
   { id: 'appearance', label: 'Appearance', icon: Palette, title: 'Appearance', desc: 'Pure black surfaces with a restrained white highlight.' },
   { id: 'behavior', label: 'Behavior', icon: Monitor, title: 'Behavior', desc: 'Set how WinUtilX behaves around your work.' },
   { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard, title: 'Shortcuts', desc: 'Quick access without reaching for the mouse.' },
+  { id: 'profile', label: 'Greeting', icon: UserRound, title: 'Your greeting', desc: 'Choose the name shown in your notch greeting.' },
 ];
 
 function ToggleRow({ title, description, value, onChange }) {
@@ -46,6 +48,8 @@ export default function SettingsModal({
   onThemeChange = () => {},
   hoverDetails = ['cpu', 'memory'],
   onHoverDetailsChange = () => {},
+  displayName = 'Aditya',
+  onDisplayNameChange = () => {},
   onReset = () => {},
 }) {
   const [section, setSection] = useState('hover');
@@ -55,6 +59,7 @@ export default function SettingsModal({
   const selected = Array.isArray(hoverDetails) ? hoverDetails : ['cpu', 'memory'];
   const sectionInfo = SECTIONS.find((item) => item.id === section) || SECTIONS[0];
   const activeColor = THEMES.find((item) => item.id === theme)?.color || '#F5F7FF';
+  const greetingPreview = getNotchGreeting(displayName.trim() || 'Aditya');
 
   const toggleMetric = (id) => onHoverDetailsChange((current) => {
     const list = Array.isArray(current) ? current : ['cpu', 'memory'];
@@ -212,6 +217,27 @@ export default function SettingsModal({
                         <span className="flex shrink-0 items-center gap-1">{item.keys.map((key) => <kbd key={key} className="rounded-[6px] border border-white/[0.09] bg-white/[0.04] px-1.5 py-1 text-[9px] text-[#AFB6AE]">{key}</kbd>)}</span>
                       </div>
                     ))}
+                  </motion.div>
+                )}
+
+                {section === 'profile' && (
+                  <motion.div key="profile" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
+                    <label htmlFor="notch-greeting-name" className="text-[11px] font-medium text-[#E3E6DF]">Name</label>
+                    <p className="mt-1 text-[9px] text-[#899189]">The notch greets you by this name based on your local time.</p>
+                    <input
+                      id="notch-greeting-name"
+                      type="text"
+                      value={displayName}
+                      maxLength={24}
+                      onChange={(event) => onDisplayNameChange(event.target.value)}
+                      onBlur={() => onDisplayNameChange(displayName.trim() || 'Aditya')}
+                      placeholder="Your name"
+                      className="mt-3 w-full rounded-[11px] border border-white/[0.09] bg-white/[0.035] px-3 py-2.5 text-[11px] text-[#E8E9E3] outline-none transition focus:border-white/25"
+                    />
+                    <div className="mt-3 rounded-[11px] border border-white/[0.06] bg-white/[0.02] px-3 py-2">
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-[#788078]">Preview</p>
+                      <p className="mt-1 flex items-center gap-2 text-[12px] font-semibold text-[#E7E9E2]"><span aria-hidden="true">{greetingPreview.emoji}</span><span>{greetingPreview.text}</span></p>
+                    </div>
                   </motion.div>
                 )}
               </div>

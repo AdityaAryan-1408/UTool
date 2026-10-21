@@ -2,6 +2,8 @@
 
 mod shelf;
 mod clipboard;
+mod stats;
+mod apps;
 
 use std::mem::zeroed;
 use std::ffi::c_void;
@@ -186,7 +188,7 @@ struct SystemTelemetry {
 
 #[tauri::command]
 fn get_telemetry() -> SystemTelemetry {
-    let mut ram_mb = 3.8;
+    let mut ram_mb = 0.0;
     unsafe {
         let mut pmc: PROCESS_MEMORY_COUNTERS = zeroed();
         pmc.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
@@ -200,8 +202,8 @@ fn get_telemetry() -> SystemTelemetry {
         }
     }
 
-    let mut battery_percent = 98;
-    let mut is_plugged = true;
+    let mut battery_percent = 0;
+    let mut is_plugged = false;
     unsafe {
         let mut sps: SYSTEM_POWER_STATUS = zeroed();
         if GetSystemPowerStatus(&mut sps) != 0 {
@@ -213,7 +215,7 @@ fn get_telemetry() -> SystemTelemetry {
     }
 
     SystemTelemetry {
-        cpu_percent: 2.1,
+        cpu_percent: stats::current_cpu_percent() as f32,
         ram_mb: (ram_mb * 10.0).round() / 10.0,
         battery_percent,
         is_plugged,
@@ -597,7 +599,13 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            apps::apps_list_installed,
+            apps::apps_launch_app,
             get_telemetry,
+            stats::get_system_stats,
+            stats::test_network_latency,
+            stats::test_download_speed,
+            stats::test_upload_speed,
             lock_pc,
             set_keep_awake,
             adjust_system_volume,

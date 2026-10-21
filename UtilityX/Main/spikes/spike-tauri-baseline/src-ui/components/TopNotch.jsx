@@ -27,6 +27,7 @@ import WallpaperTab from './tabs/WallpaperTab';
 import MobileTab from './tabs/MobileTab';
 import PowerTab from './tabs/PowerTab';
 import { invokeTauri, invokeTauriStrict } from '../utils/tauriBridge';
+import { getNotchGreeting } from '../utils/notchGreeting';
 
 // Apple-calibrated fluid cubic bezier curve: silky-smooth deceleration
 const TRANSITION_CONFIG = {
@@ -77,6 +78,9 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
   // Stages: 'idle' | 'hovered' | 'full'
   const [stage, setStage] = useState('idle');
   const [activeTab, setActiveTab] = useState('today');
+  const [displayName, setDisplayName] = useState(() => {
+    try { return localStorage.getItem('winutilx-display-name') || 'Aditya'; } catch { return 'Aditya'; }
+  });
   const [recentClipboardQueue, setRecentClipboardQueue] = useState([]);
   const [clipboardQueueUntil, setClipboardQueueUntil] = useState(0);
   const [queueClock, setQueueClock] = useState(Date.now());
@@ -143,10 +147,10 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
 
   // Live Windows telemetry from native backend
   const [telemetry, setTelemetry] = useState({
-    cpu_percent: 32,
-    ram_mb: 16.9,
-    battery_percent: 98,
-    is_plugged: true,
+    cpu_percent: 0,
+    ram_mb: 0,
+    battery_percent: 0,
+    is_plugged: false,
   });
 
   const resolvedAccent = THEME_ACCENTS.neon;
@@ -160,6 +164,8 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
     network: 'WI-FI',
     clock: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   };
+  const notchGreeting = getNotchGreeting(displayName);
+  const greetingWidth = Math.min(460, Math.max(270, 170 + notchGreeting.text.length * 5.5));
   const hoveredWidth = Math.min(444, 270 + hoverDetails.length * 58);
   const clipboardQueueVisible = clipboardQueueUntil > queueClock && recentClipboardQueue.length > 0;
   const newestClipboardItem = recentClipboardQueue[recentClipboardQueue.length - 1];
@@ -171,6 +177,10 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
   useEffect(() => {
     try { localStorage.setItem('winutilx-hover-details', JSON.stringify(hoverDetails)); } catch {}
   }, [hoverDetails]);
+
+  useEffect(() => {
+    try { localStorage.setItem('winutilx-display-name', displayName.trim() || 'Aditya'); } catch {}
+  }, [displayName]);
 
   useEffect(() => {
     const fetchTelemetry = async () => {
@@ -188,7 +198,7 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
   const [isNotchHidden, setIsNotchHidden] = useState(false);
 
   const updateNativeNotchRegion = (nextStage) => {
-    const width = nextStage === 'full' ? 840 : nextStage === 'hovered' ? hoveredWidth : 270;
+    const width = nextStage === 'full' ? 840 : nextStage === 'hovered' ? Math.max(hoveredWidth, greetingWidth) : greetingWidth;
     const height = nextStage === 'full'
       ? (isSettingsOpen ? 490 : (TAB_HEIGHTS[activeTab] || 450))
       : 38;
@@ -202,7 +212,7 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
 
   useLayoutEffect(() => {
     updateNativeNotchRegion(stage);
-  }, [stage, activeTab, isSettingsOpen, hoverDetails]);
+  }, [stage, activeTab, isSettingsOpen, hoverDetails, greetingWidth]);
 
   // Global hotkeys to toggle notch visibility (Alt+\ and Ctrl+Shift+H)
   useEffect(() => {
@@ -255,7 +265,7 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
   }, [stage, isSettingsOpen, activeTab]);
 
   // Current dynamic height and width of the notch
-  const targetWidth = stage === 'full' ? 840 : stage === 'hovered' ? hoveredWidth : 270;
+  const targetWidth = stage === 'full' ? 840 : stage === 'hovered' ? Math.max(hoveredWidth, greetingWidth) : greetingWidth;
 
   const targetHeight = stage === 'full' 
     ? (isSettingsOpen ? 490 : (TAB_HEIGHTS[activeTab] || 450)) 
@@ -344,11 +354,8 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
             }`}
           >
             <div className="flex items-center gap-2 shrink-0">
-                  <span 
-                    style={{ backgroundColor: accentColor }}
-                    className="w-1.5 h-1.5 rounded-full shrink-0" 
-                  />
-                  <span className="text-[11px] font-semibold tracking-[-0.02em] text-[#ECEDE7] shrink-0">WinUtilX</span>
+                  <span className="shrink-0 text-[15px] leading-none" aria-hidden="true">{notchGreeting.emoji}</span>
+                  <span className="whitespace-nowrap text-[11px] font-semibold tracking-[-0.02em] text-[#ECEDE7] shrink-0" title={notchGreeting.text}>{notchGreeting.text}</span>
 
                   <div
                     className={`flex items-center gap-2 pl-2 border-l border-white/10 min-w-0 shrink-0 overflow-hidden transition-[max-width,opacity,transform,padding] duration-200 ${
@@ -383,8 +390,8 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
                       <ChevronDown className="w-3.5 h-3.5" />
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1.5 text-slate-400">
-                      <span className="text-[10px] font-mono text-slate-400">Standby</span>
+                    <div className={`flex items-center text-slate-400 ${stage === 'hovered' ? 'gap-1' : ''}`}>
+                      {stage === 'hovered' && <span className="text-[10px]">Open</span>}
                       <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                     </div>
                   )}
@@ -542,7 +549,9 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
         onThemeChange={setAccentTheme}
         hoverDetails={hoverDetails}
         onHoverDetailsChange={setHoverDetails}
-        onReset={() => { setAccentTheme('neon'); setHoverDetails(['cpu', 'memory']); }}
+        displayName={displayName}
+        onDisplayNameChange={setDisplayName}
+        onReset={() => { setAccentTheme('neon'); setHoverDetails(['cpu', 'memory']); setDisplayName('Aditya'); }}
       />
     </div>
   );
