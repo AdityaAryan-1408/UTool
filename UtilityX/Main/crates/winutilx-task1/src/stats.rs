@@ -71,7 +71,9 @@ impl SpeedTestSession {
         unsafe {
             let session = WinHttpOpen(agent.as_ptr(), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, null_mut(), null_mut(), 0);
             if session.is_null() { return Err(winhttp_error("Could not initialize Windows network access")); }
-            WinHttpSetTimeouts(session, 5000, 10000, 10000, 10000);
+            // A measurement runs for 30 seconds; individual reads may need
+            // longer than the previous 10 second timeout on slower links.
+            WinHttpSetTimeouts(session, 8000, 15000, 15000, 40000);
             let connection = WinHttpConnect(session, host.as_ptr(), 443, 0);
             if connection.is_null() {
                 let error = winhttp_error("Could not connect to the speed test server");
@@ -118,7 +120,12 @@ unsafe fn read_response_status(request: *mut std::ffi::c_void) -> Result<(), Str
 }
 
 #[tauri::command]
-pub fn test_download_speed() -> Result<f64, String> {
+pub async fn test_download_speed() -> Result<f64, String> {
+    tauri::async_runtime::spawn_blocking(run_download_speed).await
+        .map_err(|error| format!("The download measurement worker stopped: {error}"))?
+}
+
+fn run_download_speed() -> Result<f64, String> {
     let session = SpeedTestSession::open()?;
     let started = Instant::now();
     let mut received_bytes = 0u64;
@@ -175,7 +182,12 @@ pub fn test_download_speed() -> Result<f64, String> {
 }
 
 #[tauri::command]
-pub fn test_upload_speed() -> Result<f64, String> {
+pub async fn test_upload_speed() -> Result<f64, String> {
+    tauri::async_runtime::spawn_blocking(run_upload_speed).await
+        .map_err(|error| format!("The upload measurement worker stopped: {error}"))?
+}
+
+fn run_upload_speed() -> Result<f64, String> {
     let session = SpeedTestSession::open()?;
     let mut bytes_sent = 0u64;
     let buffer = vec![0x5au8; 50_000_000];
@@ -461,7 +473,12 @@ pub fn get_system_stats() -> SystemStats {
 }
 
 #[tauri::command]
-pub fn test_network_latency() -> Result<NetworkTest, String> {
+pub async fn test_network_latency() -> Result<NetworkTest, String> {
+    tauri::async_runtime::spawn_blocking(run_network_latency).await
+        .map_err(|error| format!("The latency measurement worker stopped: {error}"))?
+}
+
+fn run_network_latency() -> Result<NetworkTest, String> {
     let address = SocketAddr::from(([1, 1, 1, 1], 443));
     let mut samples = Vec::new();
     for _ in 0..4 {

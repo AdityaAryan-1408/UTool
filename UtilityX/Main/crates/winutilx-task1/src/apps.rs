@@ -5,7 +5,7 @@ use std::process::Command;
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct InstalledApp {
     id: String,
     name: String,
@@ -155,8 +155,9 @@ $sorted = @($apps | Sort-Object -Property @{ Expression = { $_.name }; Ascending
 ConvertTo-Json -InputObject $sorted -Compress
 "#;
 
-#[tauri::command]
-pub fn apps_list_installed() -> Result<Vec<InstalledApp>, String> {
+static INSTALLED_APPS_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<Vec<InstalledApp>>>> = std::sync::OnceLock::new();
+
+fn scan_installed_apps() -> Result<Vec<InstalledApp>, String> {
     let output = Command::new("powershell.exe")
         .creation_flags(0x08000000)
         .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", APP_LIST_SCRIPT])
@@ -168,6 +169,25 @@ pub fn apps_list_installed() -> Result<Vec<InstalledApp>, String> {
     }
     let json = String::from_utf8_lossy(&output.stdout);
     serde_json::from_str(json.trim()).map_err(|error| format!("Windows returned an invalid installed-app list: {error}"))
+}
+
+#[tauri::command]
+pub fn apps_list_installed() -> Result<Vec<InstalledApp>, String> {
+    let cache = INSTALLED_APPS_CACHE.get_or_init(|| std::sync::Mutex::new(None));
+    let mut guard = cache.lock().map_err(|_| "The installed-app cache is unavailable.".to_string())?;
+    if let Some(apps) = guard.as_ref() { return Ok(apps.clone()); }
+    let apps = scan_installed_apps()?;
+    *guard = Some(apps.clone());
+    Ok(apps)
+}
+
+#[tauri::command]
+pub fn apps_refresh_installed() -> Result<Vec<InstalledApp>, String> {
+    let apps = scan_installed_apps()?;
+    let cache = INSTALLED_APPS_CACHE.get_or_init(|| std::sync::Mutex::new(None));
+    let mut guard = cache.lock().map_err(|_| "The installed-app cache is unavailable.".to_string())?;
+    *guard = Some(apps.clone());
+    Ok(apps)
 }
 
 fn wide(value: &str) -> Vec<u16> {

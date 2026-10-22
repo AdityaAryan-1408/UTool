@@ -22,12 +22,13 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Latest build
 
-- Apps tab: Windows Start menu, AppX manifest, and uninstall-registry catalog with 48 px app icons where Windows provides icon resources, alphabetical search/listing, launch actions where available, persistent pins/notes/reminders, per-app visual hiding, and a restore/rescan action. Android remains a phone-companion placeholder. Stats layout no longer includes its redundant bottom minimize row; speed downloads use repeatable 50 MB requests and error text has reserved space. Frontend and native builds succeeded; UtilityX is running as PID 24556 for manual verification.
-- Last successful full build: 2026-10-21 (Apps tab implementation).
+- Startup recovery: frontend and native builds succeeded with the original `noRedirectionBitmap: true` transparency setting and `visible: true` to ensure the notch window appears. The user confirmed that the WebView renders; checking transparent edges after relaunch. Wallpaper remains the existing static mock collection.
+- Last successful full build: 2026-10-21 (startup recovery; PID 17780).
 - Executable: UtilityX/Main/target/debug/winutilx-task1.exe
 
 ## Change log
 
+- 2026-10-21: Rebuilt and relaunched canonical UtilityX after the WebView startup failure. Restored `noRedirectionBitmap: true`; set the configured window visible at startup so it does not depend on the frontend visibility command. Confirmed the native process and its UtilityX-specific WebView2 browser, GPU, utility, and renderer processes are running (PID 17780). User reported white side backing during the diagnostic run with `noRedirectionBitmap: false`; transparent-edge verification is pending.
 - 2026-10-21: Added Windows app icons and expanded app discovery to AppX manifests and uninstall registry entries, with persisted visual hiding and Restore/rescan. Removed the Stats footer row that crowded the battery card, constrained network error text to its card, and reduced Cloudflare download chunks to 50 MB. Frontend and native builds succeeded; canonical UtilityX is running as PID 24556 for user verification.
 - 2026-10-21: Replaced Apps mock data with Windows Start menu and registered installed-app discovery, A–Z filtering, app launching, pinned apps, persistent per-app notes/reminders, and an Android placeholder for future phone-companion support. Frontend and native builds succeeded; the app remains stopped for manual verification.
 - 2026-10-14: Established the canonical source paths and launcher workflow to prevent stale executable launches.
@@ -47,8 +48,8 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Runtime status
 
-- Server status: running the current Stats and greeting build (PID 30704) for manual verification.
-- Running process: PID 30704, `UtilityX/Main/target/debug/winutilx-task1.exe`.
+- Server status: running the current startup recovery build (PID 17780) for manual verification.
+- Running process: PID 17780, `UtilityX/Main/target/debug/winutilx-task1.exe`.
 - 2026-10-20: Removed the Shelf drag-out button, frontend handler, native command, and drag implementation at the user's direction. Copy, Save As, and Delete remain available. Frontend and native builds succeeded; relaunching for manual retest.
 - 2026-10-20: Follow-up Shelf retest fixes: use a Shell-created data object and non-canonical AppData path for drag-out; add Save As and Shelf Location actions; capture pasted image data from web pages. Pasting a URL does not start a network download.
 
@@ -77,6 +78,9 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 - 2026-10-15: Removed all media detection, media-session polling, hover media UI, and expanded media transport controls at the user's direction. Hover now only displays the selected system statistics. Replaced the Controls tab media panel with buttons that open Windows Display and Sound settings. Frontend/native build succeeded; canonical app is running as PID 24696 from `UtilityX/Main/target/debug/winutilx-task1.exe`.
 
 - 2026-10-20: Moved Shelf to the first tab and Controls to second-last. Implemented persistent per-item Shelf storage under the app's local app-data folder, restore on app start, native Windows file drag-out, open with the system default app, reveal in Explorer, copy-file-to-clipboard for pasting into other apps, download, remove, clear, WebP conversion, and ZIP creation. Frontend production build and native `cargo check` succeeded. The app has not been launched for runtime testing; the user will verify the features manually.
+
+
+
 
 
 

@@ -5,6 +5,7 @@ import { invokeTauriStrict } from '../../utils/tauriBridge';
 
 const PREFS_KEY = 'utilityx-app-preferences-v1';
 const HIDDEN_APPS_KEY = 'utilityx-hidden-apps-v1';
+const APPS_CACHE_KEY = 'utilityx-installed-apps-cache-v1';
 
 function readPreferences() {
   try {
@@ -51,8 +52,16 @@ export default function AppsTab({ onCollapse }) {
 
   useEffect(() => {
     let active = true;
+    try {
+      const cached = JSON.parse(localStorage.getItem(APPS_CACHE_KEY) || 'null');
+      if (Array.isArray(cached)) {
+        setApps(cached);
+        setLoading(false);
+        return () => { active = false; };
+      }
+    } catch {}
     invokeTauriStrict('apps_list_installed')
-      .then((result) => { if (active) { setApps(Array.isArray(result) ? result : []); setLoadError(''); } })
+      .then((result) => { if (active) { const list = Array.isArray(result) ? result : []; setApps(list); setLoadError(''); try { localStorage.setItem(APPS_CACHE_KEY, JSON.stringify(list)); } catch {} } })
       .catch((error) => { if (active) setLoadError(error?.message || String(error)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -106,8 +115,9 @@ export default function AppsTab({ onCollapse }) {
     setLoading(true);
     setLoadError('');
     try {
-      const currentApps = await invokeTauriStrict('apps_list_installed');
+      const currentApps = await invokeTauriStrict('apps_refresh_installed');
       setApps(Array.isArray(currentApps) ? currentApps : []);
+      try { localStorage.setItem(APPS_CACHE_KEY, JSON.stringify(Array.isArray(currentApps) ? currentApps : [])); } catch {}
       setHiddenAppIds([]);
       setSearch('');
       setNotice(`Restored the current Windows app list (${Array.isArray(currentApps) ? currentApps.length : 0} apps).`);
@@ -226,7 +236,7 @@ export default function AppsTab({ onCollapse }) {
             <div className="flex flex-1 flex-col items-center justify-center rounded-[14px] border border-white/[0.08] px-5 text-center">
               <p className="text-[10px] font-medium text-[#E5E7E1]">Could not load installed apps</p>
               <p className="mt-1.5 max-w-[440px] break-words text-[9px] leading-4 text-[#8D958D]">{loadError}</p>
-              <button type="button" onClick={() => { setLoading(true); setLoadError(''); invokeTauriStrict('apps_list_installed').then((result) => setApps(Array.isArray(result) ? result : [])).catch((error) => setLoadError(error?.message || String(error))).finally(() => setLoading(false)); }} className="mt-2 rounded-full border border-white/[0.09] px-3 py-1 text-[9px] text-[#CDD1CA] hover:bg-white/[0.05]">Retry</button>
+              <button type="button" onClick={() => { setLoading(true); setLoadError(''); invokeTauriStrict('apps_refresh_installed').then((result) => { const list = Array.isArray(result) ? result : []; setApps(list); try { localStorage.setItem(APPS_CACHE_KEY, JSON.stringify(list)); } catch {} }).catch((error) => setLoadError(error?.message || String(error))).finally(() => setLoading(false)); }} className="mt-2 rounded-full border border-white/[0.09] px-3 py-1 text-[9px] text-[#CDD1CA] hover:bg-white/[0.05]">Retry</button>
             </div>
           ) : loading ? (
             <div className="flex flex-1 items-center justify-center text-[10px] text-[#828A82]">Reading Windows app list…</div>

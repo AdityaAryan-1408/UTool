@@ -172,6 +172,7 @@ struct NotchRegionMetrics {
 }
 
 static REGION_ANIMATION_ID: AtomicU64 = AtomicU64::new(0);
+static REGION_ANIMATION_FRAME: Mutex<()> = Mutex::new(());
 static CURRENT_NOTCH_REGION: Mutex<NotchRegionMetrics> = Mutex::new(NotchRegionMetrics {
     width: 270.0,
     height: 38.0,
@@ -453,6 +454,7 @@ fn update_notch_stage(window: tauri::WebviewWindow, stage: String, width: f64, h
         const DURATION_SECONDS: f64 = 0.24;
         let started = Instant::now();
         loop {
+            let Ok(_frame_guard) = REGION_ANIMATION_FRAME.lock() else { break; };
             if REGION_ANIMATION_ID.load(Ordering::Acquire) != animation_id {
                 break;
             }
@@ -472,6 +474,7 @@ fn update_notch_stage(window: tauri::WebviewWindow, stage: String, width: f64, h
             if progress >= 1.0 {
                 break;
             }
+            drop(_frame_guard);
             std::thread::sleep(Duration::from_millis(16));
         }
     });
@@ -600,6 +603,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             apps::apps_list_installed,
+            apps::apps_refresh_installed,
             apps::apps_launch_app,
             get_telemetry,
             stats::get_system_stats,
