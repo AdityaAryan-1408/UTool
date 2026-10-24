@@ -4,6 +4,7 @@ mod shelf;
 mod clipboard;
 mod stats;
 mod apps;
+mod wallpaper;
 
 use std::mem::zeroed;
 use std::ffi::c_void;
@@ -40,6 +41,11 @@ extern "system" {
         wMsgFilterMax: u32,
     ) -> i32;
     fn keybd_event(bVk: u8, bScan: u8, dwFlags: u32, dwExtraInfo: usize);
+}
+
+#[link(name = "PowrProf")]
+extern "system" {
+    fn SetSuspendState(hibernate: u8, force: u8, disable_wake_events: u8) -> u8;
 }
 
 const ES_CONTINUOUS: u32 = 0x80000000;
@@ -242,6 +248,35 @@ fn get_screen_logical_bounds(window: &tauri::WebviewWindow) -> (f64, f64, f64, f
 #[tauri::command]
 fn lock_pc() -> bool {
     unsafe { LockWorkStation() != 0 }
+}
+
+#[tauri::command]
+fn request_system_power(action: String) -> Result<(), String> {
+    match action.as_str() {
+        "sleep" => {
+            let result = unsafe { SetSuspendState(0, 0, 0) };
+            if result == 0 {
+                Err(format!("Windows could not put the PC to sleep (error {}).", unsafe { windows_sys::Win32::Foundation::GetLastError() }))
+            } else {
+                Ok(())
+            }
+        }
+        "restart" | "shutdown" => {
+            let args = if action == "restart" { ["/r", "/t", "0"] } else { ["/s", "/t", "0"] };
+            Command::new("shutdown.exe")
+                .creation_flags(0x08000000)
+                .args(args)
+                .spawn()
+                .map(|_| ())
+                .map_err(|error| format!("Windows could not start the {action} request: {error}"))
+        }
+        _ => Err("Unsupported power action.".into()),
+    }
+}
+
+#[tauri::command]
+fn quit_utilityx(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 #[tauri::command]
@@ -526,6 +561,7 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             clipboard::start_listener(app.handle().clone());
+            wallpaper::start_cycle_scheduler(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
                 let (x, y, screen_w, screen_h) = get_screen_logical_bounds(&window);
 
@@ -605,12 +641,23 @@ fn main() {
             apps::apps_list_installed,
             apps::apps_refresh_installed,
             apps::apps_launch_app,
+            wallpaper::wallpaper_list_local,
+            wallpaper::wallpaper_import_local,
+            wallpaper::wallpaper_delete_local,
+            wallpaper::wallpaper_set_local,
+            wallpaper::wallpaper_get_cycle_settings,
+            wallpaper::wallpaper_set_cycle_settings,
+            wallpaper::wallpaper_save_as,
+            wallpaper::wallpaper_fetch_online,
+            wallpaper::wallpaper_save_online,
             get_telemetry,
             stats::get_system_stats,
             stats::test_network_latency,
             stats::test_download_speed,
             stats::test_upload_speed,
             lock_pc,
+            request_system_power,
+            quit_utilityx,
             set_keep_awake,
             adjust_system_volume,
             toggle_system_mute,
@@ -648,8 +695,10 @@ fn main() {
         .expect("error while building tauri application")
         .run(|_app_handle, event| {
             println!("Tauri Event: {:?}", event);
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                api.prevent_exit();
+            if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
+                if code.is_none() {
+                    api.prevent_exit();
+                }
             }
         });
 }

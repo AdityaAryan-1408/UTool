@@ -1,6 +1,6 @@
 ﻿# UtilityX current state
 
-Last updated: 2026-10-21
+Last updated: 2026-10-24
 
 ## Source of truth
 
@@ -22,11 +22,16 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Latest build
 
-- Startup recovery: frontend and native builds succeeded with the original `noRedirectionBitmap: true` transparency setting and `visible: true` to ensure the notch window appears. The user confirmed that the WebView renders; checking transparent edges after relaunch. Wallpaper remains the existing static mock collection.
-- Last successful full build: 2026-10-21 (startup recovery; PID 17780).
+- Most recent full build: 2026-10-24. Frontend production build and native build succeeded; canonical app is running as PID 29740 for Power tab layout verification.
+- Previous successful full build: 2026-10-21 (startup recovery; PID 17780).
 - Executable: UtilityX/Main/target/debug/winutilx-task1.exe
 
 ## Change log
+
+- 2026-10-24: Completed Power tab actions: Lock, Sleep, Restart, Shutdown, and Quit UtilityX. Replaced browser confirmation prompts with themed in-app confirmation dialogs, removed the inaccurate wallpaper-cycle warning, and increased the Power tab height so its Minimize control fits. User close requests still hide the app, while the explicit Quit command exits it. Frontend and native builds succeeded; restarted canonical UtilityX as PID 29740. Power actions remain unverified by design.
+- 2026-10-24: Added keyword search for online wallpapers. Searches combine with the selected Wallhaven category, safely encode the query, and cache results by category plus term until Refresh. Frontend and native builds succeeded; restarted canonical UtilityX as PID 16488 for manual verification.
+- 2026-10-24: Fixed the Local wallpaper listing to include only supported image files, so cycling settings/state JSON and other non-image files are hidden. Frontend and native builds succeeded; restarted canonical UtilityX as PID 27412 for verification.
+- 2026-10-24: Added an Online wallpaper category selector for All, General, Anime, and People. Wallhaven requests now apply the selected category filter, fetched results are cached independently per category until Refresh, and stale responses cannot replace the currently selected category. Frontend and native builds succeeded; canonical app relaunched through `Start-UtilityX.ps1` and is running as PID 26320 for manual verification.
 
 - 2026-10-21: Rebuilt and relaunched canonical UtilityX after the WebView startup failure. Restored `noRedirectionBitmap: true`; set the configured window visible at startup so it does not depend on the frontend visibility command. Confirmed the native process and its UtilityX-specific WebView2 browser, GPU, utility, and renderer processes are running (PID 17780). User reported white side backing during the diagnostic run with `noRedirectionBitmap: false`; transparent-edge verification is pending.
 - 2026-10-21: Added Windows app icons and expanded app discovery to AppX manifests and uninstall registry entries, with persisted visual hiding and Restore/rescan. Removed the Stats footer row that crowded the battery card, constrained network error text to its card, and reduced Cloudflare download chunks to 50 MB. Frontend and native builds succeeded; canonical UtilityX is running as PID 24556 for user verification.
@@ -78,6 +83,11 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 - 2026-10-15: Removed all media detection, media-session polling, hover media UI, and expanded media transport controls at the user's direction. Hover now only displays the selected system statistics. Replaced the Controls tab media panel with buttons that open Windows Display and Sound settings. Frontend/native build succeeded; canonical app is running as PID 24696 from `UtilityX/Main/target/debug/winutilx-task1.exe`.
 
 - 2026-10-20: Moved Shelf to the first tab and Controls to second-last. Implemented persistent per-item Shelf storage under the app's local app-data folder, restore on app start, native Windows file drag-out, open with the system default app, reveal in Explorer, copy-file-to-clipboard for pasting into other apps, download, remove, clear, WebP conversion, and ZIP creation. Frontend production build and native `cargo check` succeeded. The app has not been launched for runtime testing; the user will verify the features manually.
+
+
+
+
+
 
 
 

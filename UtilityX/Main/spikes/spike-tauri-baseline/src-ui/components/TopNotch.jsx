@@ -44,9 +44,9 @@ const TAB_HEIGHTS = {
   stats: 450,
   clipboard: 460,
   apps: 470,
-  wallpaper: 350,
+  wallpaper: 640,
   mobile: 430,    // Phone status and QR handshake
-  power: 300,
+  power: 400,
 };
 
 const THEME_ACCENTS = {

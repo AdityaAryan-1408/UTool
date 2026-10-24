@@ -1,43 +1,87 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  Lock, 
-  Moon, 
-  RotateCcw, 
-  Power, 
-  ChevronUp, 
-  CheckCircle2 
+import {
+  Lock,
+  Moon,
+  RotateCcw,
+  Power,
+  LogOut,
+  ChevronUp,
+  CheckCircle2,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
-import { invokeTauri } from '../../utils/tauriBridge';
+import { invokeTauriStrict } from '../../utils/tauriBridge';
 
 export default function PowerTab({ onCollapse, accent }) {
-  const [lockedMsg, setLockedMsg] = useState(false);
+  const [workingAction, setWorkingAction] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
+  const [confirmAction, setConfirmAction] = useState(null);
 
   const accentColor = accent?.primary || '#00F2FE';
   const accentBg = accent?.bgAlpha || 'rgba(0, 242, 254, 0.15)';
   const accentBorder = accent?.borderAlpha || 'rgba(0, 242, 254, 0.35)';
 
   const handleLock = async () => {
-    setLockedMsg(true);
-    setStatusMsg('Locking WorkStation...');
-    await invokeTauri('lock_pc');
-    setTimeout(() => {
-      setLockedMsg(false);
-      setStatusMsg('');
-    }, 2500);
+    setWorkingAction('lock');
+    setStatusMsg('');
+    try {
+      const locked = await invokeTauriStrict('lock_pc');
+      if (!locked) throw new Error('Windows could not lock the workstation.');
+      setStatusMsg('Workstation locked.');
+    } catch (error) {
+      setStatusMsg(error?.message || 'Could not lock the workstation.');
+    } finally {
+      setWorkingAction('');
+    }
   };
 
-  const handleAction = (name) => {
-    setStatusMsg(`${name} command queued (Safe Mock)`);
-    setTimeout(() => setStatusMsg(''), 2500);
+  const handleSystemPower = async (action) => {
+    setWorkingAction(action);
+    setStatusMsg('');
+    try {
+      await invokeTauriStrict('request_system_power', { action });
+      setStatusMsg(`${action === 'sleep' ? 'Sleep' : action === 'restart' ? 'Restart' : 'Shutdown'} requested.`);
+    } catch (error) {
+      setStatusMsg(error?.message || `Could not request ${action}.`);
+    } finally {
+      setWorkingAction('');
+    }
   };
 
-  const POWER_BUTTONS = [
+  const handleQuit = async () => {
+    setWorkingAction('quit');
+    setStatusMsg('');
+    try {
+      await invokeTauriStrict('quit_utilityx');
+    } catch (error) {
+      setStatusMsg(error?.message || 'Could not quit UtilityX.');
+      setWorkingAction('');
+    }
+  };
+
+  const confirmationCopy = {
+    sleep: { title: 'Sleep this PC?', description: 'Your Windows session will remain open and can be resumed when you wake the PC.', confirm: 'Sleep', tone: 'blue' },
+    restart: { title: 'Restart Windows?', description: 'Save your work first. Windows will close open applications as part of restarting.', confirm: 'Restart', tone: 'purple' },
+    shutdown: { title: 'Shut down Windows?', description: 'Save your work first. Windows will close open applications as part of shutting down.', confirm: 'Shut down', tone: 'rose' },
+    quit: { title: 'Quit UtilityX?', description: 'UtilityX will close completely. You can start it again whenever you need it.', confirm: 'Quit UtilityX', tone: 'neutral' },
+  };
+
+  const askToConfirm = (action) => setConfirmAction({ action, ...confirmationCopy[action] });
+
+  const confirmPendingAction = () => {
+    if (!confirmAction) return;
+    const { action } = confirmAction;
+    setConfirmAction(null);
+    if (action === 'quit') handleQuit();
+    else handleSystemPower(action);
+  };
+
+  const powerButtons = [
     {
       id: 'lock',
       title: 'Lock',
-      sub: 'Lock WorkStation',
+      sub: 'Lock workstation',
       icon: Lock,
       action: handleLock,
       color: 'from-amber-500/20 to-amber-600/10 border-amber-400/30 text-amber-300 hover:border-amber-400',
@@ -45,9 +89,9 @@ export default function PowerTab({ onCollapse, accent }) {
     {
       id: 'sleep',
       title: 'Sleep',
-      sub: 'Suspend System',
+      sub: 'Suspend system',
       icon: Moon,
-      action: () => handleAction('Sleep'),
+      action: () => askToConfirm('sleep'),
       color: 'from-blue-500/20 to-blue-600/10 border-blue-400/30 text-blue-300 hover:border-blue-400',
     },
     {
@@ -55,78 +99,114 @@ export default function PowerTab({ onCollapse, accent }) {
       title: 'Restart',
       sub: 'Reboot Windows',
       icon: RotateCcw,
-      action: () => handleAction('Restart'),
+      action: () => askToConfirm('restart'),
       color: 'from-purple-500/20 to-purple-600/10 border-purple-400/30 text-purple-300 hover:border-purple-400',
     },
     {
       id: 'shutdown',
       title: 'Shut down',
-      sub: 'Power Off PC',
+      sub: 'Power off PC',
       icon: Power,
-      action: () => handleAction('Shutdown'),
+      action: () => askToConfirm('shutdown'),
       color: 'from-rose-500/20 to-rose-600/10 border-rose-400/30 text-rose-300 hover:border-rose-400',
+    },
+    {
+      id: 'quit',
+      title: 'Quit UtilityX',
+      sub: 'Close the app',
+      icon: LogOut,
+      action: () => askToConfirm('quit'),
+      color: 'from-slate-500/20 to-slate-600/10 border-slate-400/30 text-slate-300 hover:border-slate-300',
     },
   ];
 
   return (
-    <div className="flex flex-col gap-4 h-full justify-between items-center py-2">
-      {/* Header Message */}
-      <div className="text-center">
-        <h3 className="text-sm font-bold text-white tracking-wide">System Power Options</h3>
-        <p className="text-xs text-slate-400 mt-0.5">Quick power control and user session management</p>
+    <div className="relative flex h-full min-h-0 flex-col items-center gap-2 overflow-hidden py-1">
+      <div className="shrink-0 text-center">
+        <h3 className="text-sm font-bold tracking-wide text-white">System Power Options</h3>
+        <p className="mt-0.5 text-xs text-slate-400">Control your Windows session or quit UtilityX</p>
       </div>
 
-      {/* 4 Power Action Buttons */}
-      <div className="grid grid-cols-4 gap-4 w-full max-w-xl">
-        {POWER_BUTTONS.map((btn) => {
-          const Icon = btn.icon;
+      <div className="grid w-full max-w-4xl shrink-0 grid-cols-5 gap-3">
+        {powerButtons.map((button) => {
+          const Icon = button.icon;
+          const busy = workingAction === button.id;
           return (
             <motion.button
-              key={btn.id}
-              whileHover={{ scale: 1.05, y: -2 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={btn.action}
-              className={`p-4 rounded-2xl bg-gradient-to-b border flex flex-col items-center justify-center gap-2.5 transition-all cursor-pointer shadow-lg group ${btn.color}`}
+              key={button.id}
+              type="button"
+              whileHover={{ scale: 1.04, y: -2 }}
+              whileTap={{ scale: 0.96 }}
+              onClick={button.action}
+              disabled={Boolean(workingAction)}
+              className={`flex cursor-pointer flex-col items-center justify-center gap-2.5 rounded-2xl border bg-gradient-to-b p-3 shadow-lg transition-all disabled:cursor-wait disabled:opacity-60 ${button.color}`}
             >
-              <div className="w-11 h-11 rounded-2xl bg-black/40 flex items-center justify-center border border-white/5 group-hover:scale-110 transition-transform shadow-md">
-                <Icon className="w-5 h-5 stroke-[2]" />
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/5 bg-black/40 shadow-md transition-transform group-hover:scale-110">
+                <Icon className="h-5 w-5 stroke-[2]" />
               </div>
-
               <div className="text-center">
-                <div className="text-xs font-bold text-white tracking-wide">{btn.title}</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">{btn.sub}</div>
+                <div className="text-xs font-bold tracking-wide text-white">{busy ? 'Working…' : button.title}</div>
+                <div className="mt-0.5 text-[10px] text-slate-400">{button.sub}</div>
               </div>
             </motion.button>
           );
         })}
       </div>
 
-      {/* Status Banner */}
-      <div className="h-5">
+      <div className="flex min-h-7 shrink-0 items-center justify-center">
         {statusMsg && (
           <motion.div
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
             style={{ backgroundColor: accentBg, borderColor: accentBorder, color: accentColor }}
-            className="flex items-center gap-2 px-3 py-0.5 rounded-full border text-xs font-medium"
+            className="flex items-center gap-2 rounded-full border px-3 py-0.5 text-xs font-medium"
           >
-            <CheckCircle2 className="w-3.5 h-3.5" />
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
             <span>{statusMsg}</span>
           </motion.div>
         )}
       </div>
 
-      {/* Bottom Minimize Button */}
-      <div className="flex justify-center pt-0.5 border-t border-white/5 w-full">
-        <button 
+      <div className="mt-auto flex w-full shrink-0 justify-center border-t border-white/5 pt-1">
+        <button
+          type="button"
           onClick={onCollapse}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-[11px] font-medium transition-colors cursor-pointer border border-white/5"
+          className="flex cursor-pointer items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-3 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
         >
-          <ChevronUp className="w-3.5 h-3.5" />
+          <ChevronUp className="h-3.5 w-3.5" />
           <span>Minimize</span>
         </button>
       </div>
+
+      {confirmAction && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-black/75 p-4 backdrop-blur-sm">
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="power-confirm-title"
+            initial={{ opacity: 0, scale: 0.96, y: 6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#101114] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.7)]"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-white/80">
+                <AlertTriangle className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 id="power-confirm-title" className="text-sm font-semibold text-white">{confirmAction.title}</h4>
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-400">{confirmAction.description}</p>
+              </div>
+              <button type="button" onClick={() => setConfirmAction(null)} aria-label="Close confirmation" className="rounded-lg p-1 text-slate-500 transition-colors hover:bg-white/10 hover:text-white">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setConfirmAction(null)} className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white">Cancel</button>
+              <button type="button" onClick={confirmPendingAction} disabled={Boolean(workingAction)} className={`rounded-lg border px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${confirmAction.tone === 'rose' ? 'border-rose-400/30 bg-rose-500/15 hover:bg-rose-500/25' : confirmAction.tone === 'blue' ? 'border-blue-400/30 bg-blue-500/15 hover:bg-blue-500/25' : confirmAction.tone === 'purple' ? 'border-purple-400/30 bg-purple-500/15 hover:bg-purple-500/25' : 'border-white/20 bg-white/10 hover:bg-white/15'}`}>{workingAction ? 'Working…' : confirmAction.confirm}</button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

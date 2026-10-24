@@ -1,3 +1,9 @@
+export let ONLINE_WALLPAPER_CACHE = {};
+
+export function cacheOnlineWallpapers(cacheKey, items) {
+  ONLINE_WALLPAPER_CACHE = { ...ONLINE_WALLPAPER_CACHE, [cacheKey]: items };
+}
+
 export const WALLPAPERS = [
   {
     id: 0,
