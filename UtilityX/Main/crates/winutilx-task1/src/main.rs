@@ -5,6 +5,9 @@ mod clipboard;
 mod stats;
 mod apps;
 mod wallpaper;
+mod wifi;
+mod ai;
+mod screen_capture;
 
 use std::mem::zeroed;
 use std::ffi::c_void;
@@ -326,6 +329,11 @@ fn open_windows_settings(page: String) -> Result<(), String> {
     let route = match page.as_str() {
         "display" => "ms-settings:display",
         "sound" => "ms-settings:sound",
+        "wifi" | "network" => "ms-settings:network-wifi",
+        "bluetooth" => "ms-settings:bluetooth",
+        "hotspot" => "ms-settings:network-mobilehotspot",
+        "nightlight" => "ms-settings:nightlight",
+        "notifications" => "ms-settings:notifications",
         _ => return Err("Unsupported Windows Settings page.".into()),
     };
     let operation: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
@@ -336,6 +344,18 @@ fn open_windows_settings(page: String) -> Result<(), String> {
     if (result as isize) <= 32 {
         return Err("Windows could not open the requested Settings page.".into());
     }
+    Ok(())
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) || url.chars().any(char::is_control) {
+        return Err("Only web links can be opened outside UtilityX.".into());
+    }
+    let operation: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
+    let target: Vec<u16> = url.encode_utf16().chain(Some(0)).collect();
+    let result = unsafe { ShellExecuteW(ptr::null_mut(), operation.as_ptr(), target.as_ptr(), ptr::null(), ptr::null(), SW_SHOWNORMAL) };
+    if (result as isize) <= 32 { return Err("Windows could not open that link.".into()); }
     Ok(())
 }
 
@@ -532,8 +552,19 @@ fn toggle_notch_visibility(window: tauri::WebviewWindow) -> bool {
 }
 
 #[tauri::command]
-fn set_fullscreen_overlay(_window: tauri::WebviewWindow, _enabled: bool) {
-    // The window remains full-screen so the lasso can use viewport coordinates.
+fn set_fullscreen_overlay(window: tauri::WebviewWindow, enabled: bool) {
+    REGION_ANIMATION_ID.fetch_add(1, Ordering::AcqRel);
+    if enabled {
+        if let (Ok(hwnd), Ok(size)) = (window.hwnd(), window.inner_size()) {
+            let region = unsafe { CreateRectRgn(0, 0, size.width as i32, size.height as i32) };
+            if !region.is_null() {
+                let result = unsafe { SetWindowRgn(hwnd.0, region, 1) };
+                if result == 0 { unsafe { DeleteObject(region as _); } }
+            }
+        }
+    } else if let Ok(current) = CURRENT_NOTCH_REGION.lock() {
+        apply_notch_region(&window, current.width, current.height, current.radius);
+    }
 }
 
 #[tauri::command]
@@ -614,12 +645,22 @@ fn main() {
                         RegisterHotKey(std::ptr::null_mut(), 102, MOD_CONTROL | MOD_SHIFT, 0x48);
                         // Ctrl+Shift+V pastes the clipboard history in original copy order.
                         RegisterHotKey(std::ptr::null_mut(), 103, MOD_CONTROL | MOD_SHIFT, 0x56);
+                        // Ctrl+Shift+S starts Circle Search from any foreground app.
+                        RegisterHotKey(std::ptr::null_mut(), 104, MOD_CONTROL | MOD_SHIFT, 0x53);
 
                         let mut msg: windows_sys::Win32::UI::WindowsAndMessaging::MSG = zeroed();
                         while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
                             if msg.message == WM_HOTKEY {
                                 if msg.wParam == 103 {
                                     let _ = clipboard::batch_paste(&hotkey_app);
+                                    continue;
+                                }
+                                if msg.wParam == 104 {
+                                    if !window_hotkey.is_visible().unwrap_or(false) {
+                                        let _ = window_hotkey.show();
+                                        let _ = window_hotkey.set_skip_taskbar(true);
+                                    }
+                                    let _ = window_hotkey.eval("window.dispatchEvent(new Event('utilityx-circle-search'))");
                                     continue;
                                 }
                                 if let Ok(visible) = window_hotkey.is_visible() {
@@ -668,6 +709,17 @@ fn main() {
             set_audio_muted,
             set_microphone_muted,
             open_windows_settings,
+            wifi::wifi_get_status,
+            wifi::wifi_scan_networks,
+            wifi::wifi_connect_network,
+            wifi::wifi_disconnect,
+            ai::ai_key_status,
+            ai::ai_save_key,
+            ai::ai_delete_key,
+            ai::ai_test_key,
+            ai::ai_circle_search,
+            screen_capture::capture_screen,
+            open_external_url,
             update_notch_stage,
             toggle_notch_visibility,
             set_fullscreen_overlay,

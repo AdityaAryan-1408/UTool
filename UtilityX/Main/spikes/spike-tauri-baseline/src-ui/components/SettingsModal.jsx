@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  ArrowUpRight, BatteryMedium, Check, Clock3, Keyboard, Monitor,
+  ArrowUpRight, BatteryMedium, Check, Clock3, Keyboard, KeyRound, Monitor,
   Palette, RotateCcw, Settings2, SlidersHorizontal, UserRound, Wifi, X,
 } from 'lucide-react';
 import { getNotchGreeting } from '../utils/notchGreeting';
+import { invokeTauriStrict } from '../utils/tauriBridge';
 
 const HOVER_OPTIONS = [
   { id: 'cpu', label: 'Processor', detail: 'Current CPU load', sample: 'CPU 8%', icon: Settings2 },
@@ -24,6 +25,7 @@ const SECTIONS = [
   { id: 'behavior', label: 'Behavior', icon: Monitor, title: 'Behavior', desc: 'Set how WinUtilX behaves around your work.' },
   { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard, title: 'Shortcuts', desc: 'Quick access without reaching for the mouse.' },
   { id: 'profile', label: 'Greeting', icon: UserRound, title: 'Your greeting', desc: 'Choose the name shown in your notch greeting.' },
+  { id: 'ai', label: 'AI & API Keys', icon: KeyRound, title: 'AI & API Keys', desc: 'Configure the provider used by Circle Search.' },
 ];
 
 function ToggleRow({ title, description, value, onChange }) {
@@ -51,15 +53,57 @@ export default function SettingsModal({
   displayName = 'Aditya',
   onDisplayNameChange = () => {},
   onReset = () => {},
+  initialSection = 'hover',
 }) {
   const [section, setSection] = useState('hover');
   const [autohide, setAutohide] = useState(true);
   const [startup, setStartup] = useState(true);
   const [sounds, setSounds] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [apiConfigured, setApiConfigured] = useState(false);
+  const [apiBusy, setApiBusy] = useState(false);
+  const [apiMessage, setApiMessage] = useState('');
   const selected = Array.isArray(hoverDetails) ? hoverDetails : ['cpu', 'memory'];
   const sectionInfo = SECTIONS.find((item) => item.id === section) || SECTIONS[0];
   const activeColor = THEMES.find((item) => item.id === theme)?.color || '#F5F7FF';
   const greetingPreview = getNotchGreeting(displayName.trim() || 'Aditya');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setSection(initialSection || 'hover');
+  }, [isOpen, initialSection]);
+
+  useEffect(() => {
+    if (!isOpen || section !== 'ai') return;
+    invokeTauriStrict('ai_key_status').then(setApiConfigured).catch((error) => setApiMessage(String(error?.message || error)));
+  }, [isOpen, section]);
+
+  const saveApiKey = async () => {
+    setApiBusy(true); setApiMessage('');
+    try {
+      await invokeTauriStrict('ai_save_key', { apiKey: apiKey.trim() });
+      setApiConfigured(true); setApiKey(''); setApiMessage('Saved encrypted on this PC.');
+    } catch (error) { setApiMessage(String(error?.message || error)); }
+    finally { setApiBusy(false); }
+  };
+
+  const testApiKey = async () => {
+    setApiBusy(true); setApiMessage('Testing Gemini connection…');
+    try {
+      const message = await invokeTauriStrict('ai_test_key', { apiKey: apiKey.trim() || null });
+      setApiMessage(message);
+    } catch (error) { setApiMessage(String(error?.message || error)); }
+    finally { setApiBusy(false); }
+  };
+
+  const removeApiKey = async () => {
+    setApiBusy(true); setApiMessage('');
+    try {
+      await invokeTauriStrict('ai_delete_key');
+      setApiConfigured(false); setApiKey(''); setApiMessage('Saved Gemini key removed.');
+    } catch (error) { setApiMessage(String(error?.message || error)); }
+    finally { setApiBusy(false); }
+  };
 
   const toggleMetric = (id) => onHoverDetailsChange((current) => {
     const list = Array.isArray(current) ? current : ['cpu', 'memory'];
@@ -238,6 +282,36 @@ export default function SettingsModal({
                       <p className="text-[9px] uppercase tracking-[0.12em] text-[#788078]">Preview</p>
                       <p className="mt-1 flex items-center gap-2 text-[12px] font-semibold text-[#E7E9E2]"><span aria-hidden="true">{greetingPreview.emoji}</span><span>{greetingPreview.text}</span></p>
                     </div>
+                  </motion.div>
+                )}
+
+                {section === 'ai' && (
+                  <motion.div key="ai" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
+                    <p className="text-[11px] font-medium text-[#E3E6DF]">Gemini API key</p>
+                    <p className="mt-1 text-[9px] leading-4 text-[#899189]">Used only when you ask Circle Search to analyze a selection. UtilityX stores the key encrypted for your Windows account and sends requests directly to Google.</p>
+                    <div className="mt-3 flex items-center justify-between rounded-[11px] border border-white/[0.06] bg-white/[0.02] px-3 py-2">
+                      <span className="text-[10px] text-[#C5CBC3]">{apiConfigured ? 'A key is saved on this PC' : 'No Gemini API key saved'}</span>
+                      <span className={`h-1.5 w-1.5 rounded-full ${apiConfigured ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                    </div>
+                    <label htmlFor="gemini-api-key" className="mt-3 block text-[10px] font-medium text-[#DDE0D9]">{apiConfigured ? 'Replace saved key' : 'API key'}</label>
+                    <input
+                      id="gemini-api-key"
+                      type="password"
+                      value={apiKey}
+                      onChange={(event) => setApiKey(event.target.value)}
+                      autoComplete="new-password"
+                      spellCheck={false}
+                      placeholder={apiConfigured ? 'Enter a new key to replace it' : 'Paste your Google AI Studio key'}
+                      className="mt-1.5 w-full rounded-[11px] border border-white/[0.09] bg-white/[0.035] px-3 py-2.5 text-[11px] text-[#E8E9E3] outline-none transition focus:border-white/25"
+                    />
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" disabled={apiBusy || !apiKey.trim()} onClick={saveApiKey} className="rounded-[9px] bg-white px-3 py-2 text-[10px] font-semibold text-black transition hover:bg-white/85 disabled:opacity-40">Save encrypted key</button>
+                      <button type="button" disabled={apiBusy || (!apiConfigured && !apiKey.trim())} onClick={testApiKey} className="rounded-[9px] border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-[10px] font-medium text-[#D4D9D1] transition hover:bg-white/[0.09] disabled:opacity-40">Test connection</button>
+                      {apiConfigured && <button type="button" disabled={apiBusy} onClick={removeApiKey} className="rounded-[9px] border border-white/[0.1] px-3 py-2 text-[10px] font-medium text-[#A8AEA6] transition hover:bg-white/[0.07] disabled:opacity-40">Remove key</button>}
+                    </div>
+                    {apiMessage && <p role="status" className="mt-2 rounded-[9px] border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[9px] leading-4 text-[#BAC1B8]">{apiMessage}</p>}
+                    <button type="button" onClick={() => invokeTauriStrict('open_external_url', { url: 'https://aistudio.google.com/app/apikey' }).catch((error) => setApiMessage(String(error?.message || error)))} className="mt-3 text-[10px] font-medium text-[#D1D6CE] underline decoration-white/25 underline-offset-2 hover:text-white">Get a Gemini API key</button>
+                    <p className="mt-3 text-[9px] leading-4 text-[#737B74]">Circle Search sends only the selected crop and your question to Google after you ask. The screenshot is not saved by UtilityX.</p>
                   </motion.div>
                 )}
               </div>

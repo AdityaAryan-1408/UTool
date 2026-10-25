@@ -26,6 +26,7 @@ export default function App() {
   const [isDictationOpen, setIsDictationOpen] = useState(false);
   const [wallpaperIndex, setWallpaperIndex] = useState(0);
   const [showSimulator, setShowSimulator] = useState(!isTauri);
+  const [settingsRequest, setSettingsRequest] = useState(null);
 
   const currentWallpaper = WALLPAPERS[wallpaperIndex] || WALLPAPERS[0];
   const currentAccent = currentWallpaper.accent;
@@ -48,19 +49,24 @@ export default function App() {
   // Global hotkeys (Ctrl+Shift for Lasso, Ctrl+Win for Dictation simulation)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Circle Snip & Ask AI: Ctrl + Shift + S or Alt + C
-      if ((e.ctrlKey && e.shiftKey && (e.key === 'S' || e.key === 's')) || (e.altKey && (e.key === 'C' || e.key === 'c'))) {
+      // Browser preview fallback; the native app uses a registered global hotkey.
+      if (!isTauri && e.ctrlKey && e.shiftKey && (e.key === 'S' || e.key === 's')) {
         e.preventDefault();
-        handleOpenLasso(!isLassoOpen);
+        handleOpenLasso(true);
       }
       if (e.key === 'Escape') {
         handleOpenLasso(false);
         setIsDictationOpen(false);
       }
     };
+    const handleNativeCircleSearch = () => handleOpenLasso(true);
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('utilityx-circle-search', handleNativeCircleSearch);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('utilityx-circle-search', handleNativeCircleSearch);
+    };
   }, [isLassoOpen]);
 
   return (
@@ -85,6 +91,8 @@ export default function App() {
         accent={currentAccent}
         wallpaperIndex={wallpaperIndex}
         onSelectWallpaper={(idx) => setWallpaperIndex(idx)}
+        settingsRequest={settingsRequest}
+        onSettingsRequestHandled={() => setSettingsRequest(null)}
         onOpenLasso={() => handleOpenLasso(true)}
         onOpenDictation={() => setIsDictationOpen(true)}
       />
@@ -205,7 +213,14 @@ export default function App() {
       {/* 5. MODALS & FULLSCREEN OVERLAYS */}
       <AnimatePresence>
         {isLassoOpen && (
-          <LassoOverlay isOpen={isLassoOpen} onClose={() => handleOpenLasso(false)} />
+          <LassoOverlay
+            isOpen={isLassoOpen}
+            onClose={() => handleOpenLasso(false)}
+            onOpenSettings={() => {
+              handleOpenLasso(false);
+              setSettingsRequest({ section: 'ai', id: Date.now() });
+            }}
+          />
         )}
       </AnimatePresence>
 

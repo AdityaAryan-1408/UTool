@@ -11,7 +11,6 @@ import {
   Image as ImageIcon, 
   Power,
   Inbox,
-  Smartphone,
   Settings
 } from 'lucide-react';
 
@@ -24,7 +23,6 @@ import StatsTab from './tabs/StatsTab';
 import ClipboardTab from './tabs/ClipboardTab';
 import AppsTab from './tabs/AppsTab';
 import WallpaperTab from './tabs/WallpaperTab';
-import MobileTab from './tabs/MobileTab';
 import PowerTab from './tabs/PowerTab';
 import { invokeTauri, invokeTauriStrict } from '../utils/tauriBridge';
 import { getNotchGreeting } from '../utils/notchGreeting';
@@ -45,7 +43,6 @@ const TAB_HEIGHTS = {
   clipboard: 460,
   apps: 470,
   wallpaper: 640,
-  mobile: 430,    // Phone status and QR handshake
   power: 400,
 };
 
@@ -69,12 +66,11 @@ const TABS = [
   { id: 'clipboard', label: 'Clipboard', icon: Clipboard },
   { id: 'apps', label: 'Apps', icon: Grid },
   { id: 'wallpaper', label: 'Wallpaper', icon: ImageIcon },
-  { id: 'mobile', label: 'Mobile', icon: Smartphone },
   { id: 'controls', label: 'Controls', icon: Sliders },
   { id: 'power', label: 'Power', icon: Power },
 ];
 
-export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent: wallpaperAccent }) {
+export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent: wallpaperAccent, settingsRequest, onSettingsRequestHandled }) {
   // Stages: 'idle' | 'hovered' | 'full'
   const [stage, setStage] = useState('idle');
   const [activeTab, setActiveTab] = useState('today');
@@ -195,7 +191,16 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
   }, []);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState('hover');
   const [isNotchHidden, setIsNotchHidden] = useState(false);
+
+  useEffect(() => {
+    if (!settingsRequest) return;
+    setSettingsInitialSection(settingsRequest.section || 'hover');
+    setIsSettingsOpen(true);
+    changeStage('full');
+    onSettingsRequestHandled?.();
+  }, [settingsRequest]);
 
   const updateNativeNotchRegion = (nextStage) => {
     const width = nextStage === 'full' ? 840 : nextStage === 'hovered' ? Math.max(hoveredWidth, greetingWidth) : greetingWidth;
@@ -413,6 +418,7 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  setSettingsInitialSection('hover');
                   setIsSettingsOpen(true);
                 }}
                 title="Preferences & Hotkeys"
@@ -523,12 +529,6 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
                   onCollapse={() => changeStage('idle')} 
                 />
               )}
-              {activeTab === 'mobile' && (
-                <MobileTab 
-                  accent={accent}
-                  onCollapse={() => changeStage('idle')} 
-                />
-              )}
               {activeTab === 'power' && (
                 <PowerTab 
                   accent={accent}
@@ -552,6 +552,7 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
         displayName={displayName}
         onDisplayNameChange={setDisplayName}
         onReset={() => { setAccentTheme('neon'); setHoverDetails(['cpu', 'memory']); setDisplayName('Aditya'); }}
+        initialSection={settingsInitialSection}
       />
     </div>
   );

@@ -22,7 +22,7 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Latest build
 
-- Most recent full build: 2026-10-24. Frontend production build and native build succeeded; canonical app is running as PID 29740 for Power tab layout verification.
+- Most recent source build: 2026-10-24. Frontend production build and native `cargo build` succeeded after the latest edits. The app was not restarted, so the currently running process (if any) still has the previous build.
 - Previous successful full build: 2026-10-21 (startup recovery; PID 17780).
 - Executable: UtilityX/Main/target/debug/winutilx-task1.exe
 
@@ -74,7 +74,10 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 - 2026-10-14: Stopped UtilityX at the user's request (PID 27676). The next planned work is real Controls tab functionality.
 
 - 2026-10-15: Added the first native Controls integrations: persistent Keep-Awake on a dedicated worker thread, display brightness through Windows WMI, master volume and speaker/microphone mute through Core Audio, and global media transport key actions. The Controls UI now invokes these native handlers and displays bridge errors; unsupported quick toggles are disabled instead of changing only local state. Frontend and native builds succeeded. Runtime behavior has not yet been manually checked.
-- Still pending from `CONTROLS-SPEC.md`: Wi-Fi radio/scan/connect, Bluetooth radio/discovery/pair/connect, audio endpoint enumeration/routing, mobile hotspot, and Night Light. Wi-Fi and Bluetooth sheets still contain demo data, so do not treat those sheets as real controls yet.
+- Historical note (superseded 2026-10-24): At that point Wi-Fi, Bluetooth, audio routing, hotspot, and Night Light integrations were pending and the Wi-Fi/Bluetooth sheets were demos.
+- 2026-10-24: Replaced Controls tab's demo Wi-Fi entries with live `netsh wlan` status/scanning and connect/disconnect commands, including saved-profile connections and temporary profile creation for secured/open networks. Removed fabricated Bluetooth and audio endpoint lists; Bluetooth pairing, audio device routing, hotspot, Night Light, and notification focus are clearly handed off to Windows Settings. Existing native brightness, volume/mute, microphone mute, and Keep-Awake controls remain. Frontend and native builds succeeded. Manual runtime verification is pending.
+- 2026-10-24: Removed the Mobile tab from visible navigation while deferring phone-companion work. Its source remains in the project. Frontend build and runtime launch are pending.
+- 2026-10-24: Implemented the first Gemini Circle Search path: global Ctrl+Shift+S activation, full-screen lasso hit area, primary-display capture and local crop, no-key prompt, DPAPI-encrypted Gemini key storage with save/test/remove settings, Gemini vision responses, optional Google Search grounding/citations, follow-up questions, browser search, copy answer, and Save to Shelf. Screenshot pixels are captured locally and only the selected crop is sent when Circle Search is invoked; no image is written to disk. Frontend and native builds succeeded. Runtime/API behavior awaits manual verification; the app was not started.
 - 2026-10-15: After the user reported failed brightness, laggy volume, console flashes, and a taskbar icon, corrected brightness to call `WmiSetBrightness` through `Invoke-CimMethod`, replaced per-action PowerShell/Core Audio compilation with in-process COM calls, suppressed the remaining hidden PowerShell host window, and reapplied `skip_taskbar` after the overlay is shown. Frontend/native build succeeded. The app remains stopped; these runtime fixes still need the user's visual/device verification.
 
 - 2026-10-15: Replaced the mock lofi hover card and static media panel with Windows GSMTC session metadata and transport controls; the compact media card appears only for a playing session. Brightness writes now tolerate a missing WMI `ReturnValue` (which previously produced a false error after applying the change), return Windows' readback value, and the Controls tab polls brightness every 2.2 seconds while avoiding slider drags. Frontend/native build succeeded. Canonical app is running as PID 20708 from `UtilityX/Main/target/debug/winutilx-task1.exe` for user verification.
@@ -82,7 +85,19 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 - 2026-10-15: Removed all media detection, media-session polling, hover media UI, and expanded media transport controls at the user's direction. Hover now only displays the selected system statistics. Replaced the Controls tab media panel with buttons that open Windows Display and Sound settings. Frontend/native build succeeded; canonical app is running as PID 24696 from `UtilityX/Main/target/debug/winutilx-task1.exe`.
 
+- 2026-10-24: Changed Gemini API-key connection testing to run on Tauri's blocking worker pool, so a slow Google response no longer stalls the UI thread. Selected the current multimodal Gemini 3.8 Flash model after Flash-Lite and 3.6 returned empty text, shortened WinHTTP phase timeouts (including response wait from 90s to 15s), and added one short retry for transient HTTP 429/5xx responses. Improved empty-response handling to surface Gemini's finish reason and distinguish token exhaustion from safety blocks; connection testing now requires actual text. Circle Search retries one empty STOP with an explicit concise-text instruction, uses Google's minimal REST image request shape (image part before prompt; no generation override), and reports model version/output count/part shape if still empty. Build/runtime verification is pending.
+- 2026-10-24: Clarified Circle Search's Google action as text-only: it no longer falls back to the literal query "search selected image" and explains that Google does not receive the circled crop. Removed automatic retries for HTTP 429 quota errors and empty Gemini STOP responses because they cannot resolve the quota and were consuming extra calls. Build/runtime verification is pending.
+
 - 2026-10-20: Moved Shelf to the first tab and Controls to second-last. Implemented persistent per-item Shelf storage under the app's local app-data folder, restore on app start, native Windows file drag-out, open with the system default app, reveal in Explorer, copy-file-to-clipboard for pasting into other apps, download, remove, clear, WebP conversion, and ZIP creation. Frontend production build and native `cargo check` succeeded. The app has not been launched for runtime testing; the user will verify the features manually.
+
+
+
+
+
+
+
+
+
 
 
 
