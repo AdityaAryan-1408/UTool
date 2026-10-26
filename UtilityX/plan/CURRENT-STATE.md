@@ -1,6 +1,6 @@
 ﻿# UtilityX current state
 
-Last updated: 2026-10-24
+Last updated: 2026-10-26
 
 ## Source of truth
 
@@ -22,12 +22,14 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Latest build
 
-- Most recent source build: 2026-10-24. Frontend production build and native `cargo build` succeeded after the latest edits. The app was not restarted, so the currently running process (if any) still has the previous build.
+- Most recent full native build: 2026-10-26, including the draggable Circle Search panel and Markdown rendering. Frontend production and native builds succeeded; the app remains stopped after build-only verification.
+- Latest UI change: Circle Search result panels can be dragged by the header, and Groq answers render common Markdown. The built executable includes this UI change; the app has not been launched for manual verification.
 - Previous successful full build: 2026-10-21 (startup recovery; PID 17780).
 - Executable: UtilityX/Main/target/debug/winutilx-task1.exe
 
 ## Change log
 
+- 2026-10-26: Made the Circle Search answer panel draggable from its header and added safe rendering for common Markdown headings, lists, emphasis, inline code, and HTTP(S) links. Frontend production build succeeded; the app was not restarted.
 - 2026-10-24: Completed Power tab actions: Lock, Sleep, Restart, Shutdown, and Quit UtilityX. Replaced browser confirmation prompts with themed in-app confirmation dialogs, removed the inaccurate wallpaper-cycle warning, and increased the Power tab height so its Minimize control fits. User close requests still hide the app, while the explicit Quit command exits it. Frontend and native builds succeeded; restarted canonical UtilityX as PID 29740. Power actions remain unverified by design.
 - 2026-10-24: Added keyword search for online wallpapers. Searches combine with the selected Wallhaven category, safely encode the query, and cache results by category plus term until Refresh. Frontend and native builds succeeded; restarted canonical UtilityX as PID 16488 for manual verification.
 - 2026-10-24: Fixed the Local wallpaper listing to include only supported image files, so cycling settings/state JSON and other non-image files are hidden. Frontend and native builds succeeded; restarted canonical UtilityX as PID 27412 for verification.
@@ -87,8 +89,19 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 - 2026-10-24: Changed Gemini API-key connection testing to run on Tauri's blocking worker pool, so a slow Google response no longer stalls the UI thread. Selected the current multimodal Gemini 3.8 Flash model after Flash-Lite and 3.6 returned empty text, shortened WinHTTP phase timeouts (including response wait from 90s to 15s), and added one short retry for transient HTTP 429/5xx responses. Improved empty-response handling to surface Gemini's finish reason and distinguish token exhaustion from safety blocks; connection testing now requires actual text. Circle Search retries one empty STOP with an explicit concise-text instruction, uses Google's minimal REST image request shape (image part before prompt; no generation override), and reports model version/output count/part shape if still empty. Build/runtime verification is pending.
 - 2026-10-24: Clarified Circle Search's Google action as text-only: it no longer falls back to the literal query "search selected image" and explains that Google does not receive the circled crop. Removed automatic retries for HTTP 429 quota errors and empty Gemini STOP responses because they cannot resolve the quota and were consuming extra calls. Build/runtime verification is pending.
+- 2026-10-26: Corrected Gemini's Settings connection-check request to use the supported `low` thinking level instead of unsupported `minimal`. Gemini HTTP errors now include the structured error object with the API key redacted, so quota metric, quota ID, and status details can be inspected. Native build succeeded. Prepared a temporary direct REST diagnostic script that asks for the key without echoing or saving it, tests text, and optionally tests an image; external API verification awaits user execution. App not launched.
+- 2026-10-26: Direct REST checks with the user's key succeeded for Gemini 3.6 Flash text and image generation; Gemini 3.8 Flash text and image generation timed out without an HTTP response. Switched UtilityX to Gemini 3.6 Flash, set low thinking for Circle Search image requests, raised the connection-test output budget, and increased the WinHTTP receive timeout from 15 to 60 seconds. Native `cargo build` succeeded with one existing unused `UnregisterHotKey` warning; app not launched.
+- 2026-10-26: After manual Circle Search returned empty STOP candidates with 162 and 138 output tokens, set simple visual identification requests to Gemini 3.6's supported `minimal` thinking level, kept `low` for web-grounded requests, and clarified the concise visible-answer prompt. The exact saved crop replayed successfully via direct REST with the new key (HTTP 200, 4.5 seconds, correct answer). Added a single retry for empty STOP/unspecified responses only. Frontend and native builds succeeded; the updated app is running as PID 9540.
+- 2026-10-26: Switched Circle Search from Gemini to Groq's Qwen 3.8 27B vision model using Groq Chat Completions with a base64 image data URL. Updated API-key settings and DPAPI storage to Groq, and remove the obsolete encrypted Gemini key when a Groq key is saved or removed. Removed the Gemini web-grounding action because it is not available through this Groq request; the separate Google text-search action remains. Frontend production build and native build succeeded (one existing unused `UnregisterHotKey` warning); launched canonical app as PID 31460 for key entry and manual verification.
 
 - 2026-10-20: Moved Shelf to the first tab and Controls to second-last. Implemented persistent per-item Shelf storage under the app's local app-data folder, restore on app start, native Windows file drag-out, open with the system default app, reveal in Explorer, copy-file-to-clipboard for pasting into other apps, download, remove, clear, WebP conversion, and ZIP creation. Frontend production build and native `cargo check` succeeded. The app has not been launched for runtime testing; the user will verify the features manually.
+
+
+
+
+
+
+
 
 
 

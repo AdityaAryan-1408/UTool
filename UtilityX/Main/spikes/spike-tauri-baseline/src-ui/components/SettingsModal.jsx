@@ -88,7 +88,7 @@ export default function SettingsModal({
   };
 
   const testApiKey = async () => {
-    setApiBusy(true); setApiMessage('Testing Gemini connection…');
+    setApiBusy(true); setApiMessage('Testing Groq connection…');
     try {
       const message = await invokeTauriStrict('ai_test_key', { apiKey: apiKey.trim() || null });
       setApiMessage(message);
@@ -100,7 +100,7 @@ export default function SettingsModal({
     setApiBusy(true); setApiMessage('');
     try {
       await invokeTauriStrict('ai_delete_key');
-      setApiConfigured(false); setApiKey(''); setApiMessage('Saved Gemini key removed.');
+      setApiConfigured(false); setApiKey(''); setApiMessage('Saved Groq key removed.');
     } catch (error) { setApiMessage(String(error?.message || error)); }
     finally { setApiBusy(false); }
   };
@@ -287,21 +287,21 @@ export default function SettingsModal({
 
                 {section === 'ai' && (
                   <motion.div key="ai" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
-                    <p className="text-[11px] font-medium text-[#E3E6DF]">Gemini API key</p>
-                    <p className="mt-1 text-[9px] leading-4 text-[#899189]">Used only when you ask Circle Search to analyze a selection. UtilityX stores the key encrypted for your Windows account and sends requests directly to Google.</p>
+                    <p className="text-[11px] font-medium text-[#E3E6DF]">Groq API key</p>
+                    <p className="mt-1 text-[9px] leading-4 text-[#899189]">Used by Circle Search with Groq’s Qwen vision model. UtilityX stores the key encrypted for your Windows account and sends requests directly to Groq.</p>
                     <div className="mt-3 flex items-center justify-between rounded-[11px] border border-white/[0.06] bg-white/[0.02] px-3 py-2">
-                      <span className="text-[10px] text-[#C5CBC3]">{apiConfigured ? 'A key is saved on this PC' : 'No Gemini API key saved'}</span>
+                      <span className="text-[10px] text-[#C5CBC3]">{apiConfigured ? 'A key is saved on this PC' : 'No Groq API key saved'}</span>
                       <span className={`h-1.5 w-1.5 rounded-full ${apiConfigured ? 'bg-emerald-400' : 'bg-white/25'}`} />
                     </div>
-                    <label htmlFor="gemini-api-key" className="mt-3 block text-[10px] font-medium text-[#DDE0D9]">{apiConfigured ? 'Replace saved key' : 'API key'}</label>
+                    <label htmlFor="groq-api-key" className="mt-3 block text-[10px] font-medium text-[#DDE0D9]">{apiConfigured ? 'Replace saved key' : 'API key'}</label>
                     <input
-                      id="gemini-api-key"
+                      id="groq-api-key"
                       type="password"
                       value={apiKey}
                       onChange={(event) => setApiKey(event.target.value)}
                       autoComplete="new-password"
                       spellCheck={false}
-                      placeholder={apiConfigured ? 'Enter a new key to replace it' : 'Paste your Google AI Studio key'}
+                      placeholder={apiConfigured ? 'Enter a new key to replace it' : 'Paste your Groq API key'}
                       className="mt-1.5 w-full rounded-[11px] border border-white/[0.09] bg-white/[0.035] px-3 py-2.5 text-[11px] text-[#E8E9E3] outline-none transition focus:border-white/25"
                     />
                     <div className="mt-2 flex flex-wrap gap-2">
@@ -310,8 +310,8 @@ export default function SettingsModal({
                       {apiConfigured && <button type="button" disabled={apiBusy} onClick={removeApiKey} className="rounded-[9px] border border-white/[0.1] px-3 py-2 text-[10px] font-medium text-[#A8AEA6] transition hover:bg-white/[0.07] disabled:opacity-40">Remove key</button>}
                     </div>
                     {apiMessage && <p role="status" className="mt-2 rounded-[9px] border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[9px] leading-4 text-[#BAC1B8]">{apiMessage}</p>}
-                    <button type="button" onClick={() => invokeTauriStrict('open_external_url', { url: 'https://aistudio.google.com/app/apikey' }).catch((error) => setApiMessage(String(error?.message || error)))} className="mt-3 text-[10px] font-medium text-[#D1D6CE] underline decoration-white/25 underline-offset-2 hover:text-white">Get a Gemini API key</button>
-                    <p className="mt-3 text-[9px] leading-4 text-[#737B74]">Circle Search sends only the selected crop and your question to Google after you ask. The screenshot is not saved by UtilityX.</p>
+                    <button type="button" onClick={() => invokeTauriStrict('open_external_url', { url: 'https://console.groq.com/keys' }).catch((error) => setApiMessage(String(error?.message || error)))} className="mt-3 text-[10px] font-medium text-[#D1D6CE] underline decoration-white/25 underline-offset-2 hover:text-white">Get a Groq API key</button>
+                    <p className="mt-3 text-[9px] leading-4 text-[#737B74]">Circle Search sends only the selected crop and your question to Groq after you ask. The screenshot is not saved by UtilityX.</p>
                   </motion.div>
                 )}
               </div>
