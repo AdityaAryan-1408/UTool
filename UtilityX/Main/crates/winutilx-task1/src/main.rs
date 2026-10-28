@@ -8,6 +8,7 @@ mod wallpaper;
 mod wifi;
 mod ai;
 mod screen_capture;
+mod link_preview;
 
 use std::mem::zeroed;
 use std::ffi::c_void;
@@ -617,9 +618,11 @@ fn main() {
                             let _ = drop_window.eval("window.dispatchEvent(new Event('utilityx-shelf-drag-enter'))");
                         }
                         tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
-                            match shelf::import_external_paths(&drop_app, paths) {
-                                Ok(count) => {
-                                    let js = format!("window.dispatchEvent(new CustomEvent('utilityx-shelf-files-dropped', {{ detail: {{ count: {count} }} }}))");
+                            match shelf::import_external_paths_with_ids(&drop_app, paths) {
+                                Ok(ids) => {
+                                    let detail = serde_json::json!({ "count": ids.len(), "ids": ids });
+                                    let detail = serde_json::to_string(&detail).unwrap_or_else(|_| "{}".into());
+                                    let js = format!("window.dispatchEvent(new CustomEvent('utilityx-shelf-files-dropped', {{ detail: {detail} }}))");
                                     let _ = drop_window.eval(&js);
                                 }
                                 Err(error) => {
@@ -647,6 +650,10 @@ fn main() {
                         RegisterHotKey(std::ptr::null_mut(), 103, MOD_CONTROL | MOD_SHIFT, 0x56);
                         // Ctrl+Shift+S starts Circle Search from any foreground app.
                         RegisterHotKey(std::ptr::null_mut(), 104, MOD_CONTROL | MOD_SHIFT, 0x53);
+                        // Ctrl+Shift+X starts an adjustable screen capture from any foreground app.
+                        RegisterHotKey(std::ptr::null_mut(), 105, MOD_CONTROL | MOD_SHIFT, 0x58);
+                        // Alternate screen-capture binding in case another app owns Ctrl+Shift+X.
+                        RegisterHotKey(std::ptr::null_mut(), 106, MOD_CONTROL | 0x0001, 0x58);
 
                         let mut msg: windows_sys::Win32::UI::WindowsAndMessaging::MSG = zeroed();
                         while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
@@ -661,6 +668,14 @@ fn main() {
                                         let _ = window_hotkey.set_skip_taskbar(true);
                                     }
                                     let _ = window_hotkey.eval("window.dispatchEvent(new Event('utilityx-circle-search'))");
+                                    continue;
+                                }
+                                if msg.wParam == 105 || msg.wParam == 106 {
+                                    if !window_hotkey.is_visible().unwrap_or(false) {
+                                        let _ = window_hotkey.show();
+                                        let _ = window_hotkey.set_skip_taskbar(true);
+                                    }
+                                    let _ = window_hotkey.eval("window.dispatchEvent(new Event('utilityx-screen-capture'))");
                                     continue;
                                 }
                                 if let Ok(visible) = window_hotkey.is_visible() {
@@ -727,6 +742,7 @@ fn main() {
             set_clipboard_focus_mode,
             clipboard::clipboard_list_items,
             clipboard::clipboard_read_item,
+            clipboard::clipboard_image_preview,
             clipboard::clipboard_copy_item,
             clipboard::clipboard_delete_item,
             clipboard::clipboard_clear,
@@ -741,7 +757,8 @@ fn main() {
             shelf::shelf_open_location,
             shelf::shelf_save_file_as,
             shelf::shelf_copy_file,
-            shelf::shelf_import_clipboard_files
+            shelf::shelf_import_clipboard_files,
+            link_preview::get_link_preview
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

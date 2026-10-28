@@ -17,12 +17,15 @@ import {
 
 import TopNotch from './components/TopNotch';
 import LassoOverlay from './components/LassoOverlay';
+import ScreenshotOverlay from './components/ScreenshotOverlay';
 import DictationModal from './components/DictationModal';
-import { isTauri, invokeTauri } from './utils/tauriBridge';
+import { isTauri, invokeTauri, invokeTauriStrict } from './utils/tauriBridge';
 import { WALLPAPERS } from './utils/wallpapers';
 
 export default function App() {
   const [isLassoOpen, setIsLassoOpen] = useState(false);
+  const [isScreenshotOpen, setIsScreenshotOpen] = useState(false);
+  const [pendingScreenshot, setPendingScreenshot] = useState(null);
   const [isDictationOpen, setIsDictationOpen] = useState(false);
   const [wallpaperIndex, setWallpaperIndex] = useState(0);
   const [showSimulator, setShowSimulator] = useState(!isTauri);
@@ -46,6 +49,26 @@ export default function App() {
     }
   };
 
+  const handleOpenScreenshot = async () => {
+    try {
+      if (isTauri) {
+        // Clipboard mode makes the notch non-focusable; turn that off so the
+        // full-screen region selector can receive pointer input.
+        await invokeTauriStrict('set_clipboard_focus_mode', { enabled: false });
+        await invokeTauriStrict('set_fullscreen_overlay', { enabled: true });
+      }
+      setIsScreenshotOpen(true);
+    } catch (error) {
+      console.error('Could not open screen capture overlay:', error);
+    }
+  };
+
+  const handleCloseScreenshot = (restoreClipboardFocus = true) => {
+    setIsScreenshotOpen(false);
+    if (isTauri) invokeTauriStrict('set_fullscreen_overlay', { enabled: false }).catch(() => {});
+    if (restoreClipboardFocus) window.dispatchEvent(new Event('utilityx-screen-capture-closed'));
+  };
+
   // Global hotkeys (Ctrl+Shift for Lasso, Ctrl+Win for Dictation simulation)
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -54,18 +77,26 @@ export default function App() {
         e.preventDefault();
         handleOpenLasso(true);
       }
+      if (!isTauri && e.ctrlKey && e.shiftKey && (e.key === 'X' || e.key === 'x')) {
+        e.preventDefault();
+        handleOpenScreenshot();
+      }
       if (e.key === 'Escape') {
         handleOpenLasso(false);
+        handleCloseScreenshot();
         setIsDictationOpen(false);
       }
     };
     const handleNativeCircleSearch = () => handleOpenLasso(true);
+    const handleNativeScreenCapture = () => handleOpenScreenshot();
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('utilityx-circle-search', handleNativeCircleSearch);
+    window.addEventListener('utilityx-screen-capture', handleNativeScreenCapture);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('utilityx-circle-search', handleNativeCircleSearch);
+      window.removeEventListener('utilityx-screen-capture', handleNativeScreenCapture);
     };
   }, [isLassoOpen]);
 
@@ -94,6 +125,8 @@ export default function App() {
         settingsRequest={settingsRequest}
         onSettingsRequestHandled={() => setSettingsRequest(null)}
         onOpenLasso={() => handleOpenLasso(true)}
+        pendingScreenshot={pendingScreenshot}
+        onClearPendingScreenshot={() => setPendingScreenshot(null)}
         onOpenDictation={() => setIsDictationOpen(true)}
       />
 
@@ -222,6 +255,10 @@ export default function App() {
             }}
           />
         )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isScreenshotOpen && <ScreenshotOverlay onClose={handleCloseScreenshot} onCaptured={(file) => { setPendingScreenshot(file); handleCloseScreenshot(false); window.dispatchEvent(new Event('utilityx-screenshot-added')); }} />}
       </AnimatePresence>
 
       <AnimatePresence>

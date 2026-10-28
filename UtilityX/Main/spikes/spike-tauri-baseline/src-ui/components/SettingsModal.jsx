@@ -254,6 +254,7 @@ export default function SettingsModal({
                       { title: 'Toggle notch visibility', description: 'Show or hide the notch', keys: ['Alt', '\\'] },
                       { title: 'Toggle notch visibility', description: 'Alternate visibility shortcut', keys: ['Ctrl', 'Shift', 'H'] },
                       { title: 'Circle snip', description: 'Select an area of the screen', keys: ['Ctrl', 'Shift', 'S'] },
+                      { title: 'Screen capture', description: 'Select a region and add it to Shelf temporarily · Ctrl+Alt+X alternate', keys: ['Ctrl', 'Shift', 'X'] },
                       { title: 'Dictation', description: 'Open voice input', keys: ['Ctrl', 'Win'] },
                     ].map((item, index) => (
                       <div key={index} className="flex items-center justify-between gap-3 border-b border-white/[0.06] py-3">

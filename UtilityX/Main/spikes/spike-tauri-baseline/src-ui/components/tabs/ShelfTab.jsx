@@ -17,8 +17,10 @@ import {
   FolderOpen,
   Trash2,
   UploadCloud,
+  Save,
 } from 'lucide-react';
-import { invokeTauriStrict } from '../../utils/tauriBridge';
+import { invokeTauriStrict, isTauri } from '../../utils/tauriBridge';
+import LinkPreviewCard from '../LinkPreviewCard';
 
 const ZIP_CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -63,6 +65,16 @@ function inferMimeType(name) {
 async function describeFile(file) {
   const type = classifyFile(file);
   let detail = file.type || file.name.split('.').pop()?.toUpperCase() || 'File';
+  let url = '';
+  if (type === 'link') {
+    try {
+      const content = await file.text();
+      const match = content.match(/^\s*URL\s*=\s*(.+)\s*$/im);
+      const candidate = match?.[1]?.trim() || content.trim();
+      const parsed = new URL(candidate);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') url = parsed.href;
+    } catch { /* Keep the shortcut item even if its target cannot be parsed. */ }
+  }
   if (type === 'image' && globalThis.createImageBitmap) {
     try {
       const bitmap = await createImageBitmap(file);
@@ -79,10 +91,10 @@ async function describeFile(file) {
     name: file.name,
     bytes: file.size,
     type,
+    url,
     detail,
     status: 'Saved on this device',
-    converted: false,
-  };
+    };
 }
 
 function crc32(bytes) {
@@ -181,12 +193,14 @@ function createDroppedTextItem(text) {
 
   let file;
   let type = 'code';
+  let url = '';
   try {
-    const url = new URL(value);
-    if (url.protocol === 'https:' || url.protocol === 'http:') {
-      const shortcut = `[InternetShortcut]\r\nURL=${url.href}\r\n`;
-      file = new File([shortcut], `${url.hostname || 'Web_Link'}.url`, { type: 'application/internet-shortcut' });
+    const parsedUrl = new URL(value);
+    if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') {
+      const shortcut = `[InternetShortcut]\r\nURL=${parsedUrl.href}\r\n`;
+      file = new File([shortcut], `${parsedUrl.hostname || 'Web_Link'}.url`, { type: 'application/internet-shortcut' });
       type = 'link';
+      url = parsedUrl.href;
     }
   } catch {
     // Non-URL text is staged as a plain text snippet below.
@@ -203,10 +217,10 @@ function createDroppedTextItem(text) {
     name: file.name,
     bytes: file.size,
     type,
+    url,
     detail: type === 'link' ? 'Internet shortcut' : 'Text snippet',
     status: 'Saved on this device',
-    converted: false,
-  };
+    };
 }
 
 function getItemIcon(type) {
@@ -219,7 +233,19 @@ function getItemIcon(type) {
   }
 }
 
-export default function ShelfTab({ onCollapse, accent }) {
+function ShelfThumbnail({ item }) {
+  const [src, setSrc] = useState('');
+  useEffect(() => {
+    if (item.type !== 'image' || !item.file) { setSrc(''); return undefined; }
+    const objectUrl = URL.createObjectURL(item.file);
+    setSrc(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [item.file, item.type]);
+  if (item.type === 'image' && src) return <img src={src} alt="" className="h-12 w-16 shrink-0 rounded-lg border border-white/10 bg-black/30 object-cover" />;
+  return <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-slate-800">{getItemIcon(item.type)}</div>;
+}
+
+export default function ShelfTab({ onCollapse, accent, pendingScreenshot, onClearPendingScreenshot }) {
   const [items, setItems] = useState([]);
   const [dragOver, setDragOver] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
@@ -232,7 +258,12 @@ export default function ShelfTab({ onCollapse, accent }) {
   const accentBg = accent?.bgAlpha || 'rgba(255, 255, 255, 0.10)';
   const accentBorder = accent?.borderAlpha || 'rgba(255, 255, 255, 0.24)';
   const totalBytes = items.reduce((sum, item) => sum + item.bytes, 0);
-
+  const draftItem = pendingScreenshot ? {
+    id: 'pending-screenshot', file: pendingScreenshot, name: pendingScreenshot.name,
+    bytes: pendingScreenshot.size, type: 'image', detail: 'Screenshot',
+    status: 'Temporary · not saved yet', isDraft: true,
+  } : null;
+  const visibleItems = draftItem ? [draftItem, ...items] : items;
   const showToast = (message) => {
     setToastMsg(message);
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
@@ -252,6 +283,7 @@ export default function ShelfTab({ onCollapse, accent }) {
       const currentIds = new Set(current.map((item) => item.id));
       return [...current, ...restored.filter((item) => !currentIds.has(item.id))];
     });
+    return restored;
   };
 
   useEffect(() => {
@@ -309,6 +341,10 @@ export default function ShelfTab({ onCollapse, accent }) {
     setDragOver(false);
     const files = Array.from(event.dataTransfer?.files || []);
     if (files.length) {
+      // Tauri's native window drop callback already imports external files and
+      // emits their Shelf IDs. Avoid a second browser-side import of the same
+      // drag, which also duplicates large file buffers in WebView memory.
+      if (isTauri) return;
       await stageFiles(files);
       return;
     }
@@ -334,6 +370,11 @@ export default function ShelfTab({ onCollapse, accent }) {
   };
 
   const handleRemove = async (id) => {
+    if (id === 'pending-screenshot') {
+      onClearPendingScreenshot?.();
+      showToast('Temporary screenshot discarded');
+      return;
+    }
     try { await invokeTauriStrict('shelf_delete_file', { id }); }
     catch (error) { showToast(`Could not remove item: ${error?.message || error}`); return; }
     setItems((current) => current.filter((item) => item.id !== id));
@@ -383,7 +424,15 @@ export default function ShelfTab({ onCollapse, accent }) {
       const items = Array.from(clipboard?.items || []);
       files.push(...items.filter((item) => item.kind === 'file').map((item) => item.getAsFile()).filter(Boolean));
     }
-    if (files.length === 0) return;
+    if (files.length === 0) {
+      const pastedText = clipboard?.getData('text/uri-list') || clipboard?.getData('text/plain') || '';
+      const linkItem = createDroppedTextItem(pastedText);
+      if (linkItem?.type === 'link') {
+        event.preventDefault();
+        await stageFiles([linkItem.file]);
+      }
+      return;
+    }
     event.preventDefault();
     await stageFiles(files);
   };
@@ -394,44 +443,19 @@ export default function ShelfTab({ onCollapse, accent }) {
     return () => window.removeEventListener('paste', onPaste);
   }, []);
 
-  const handleConvert = async (id) => {
-    const item = items.find((entry) => entry.id === id);
-    if (!item || item.type !== 'image') return;
-    setBusyAction(id);
+  const handleSaveScreenshot = async () => {
+    if (!pendingScreenshot) return;
+    setBusyAction('screenshot');
     try {
-      const bitmap = await createImageBitmap(item.file);
-      const width = bitmap.width;
-      const height = bitmap.height;
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('Image conversion is unavailable in this window.');
-      context.drawImage(bitmap, 0, 0);
-      bitmap.close?.();
-      const webpBlob = await new Promise((resolve, reject) => {
-        canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('The browser could not encode this image.'))), 'image/webp', 0.92);
-      });
-      const webpName = item.name.replace(/\.[^.]+$/, '') + '.webp';
-      const webpFile = new File([webpBlob], webpName, { type: 'image/webp', lastModified: Date.now() });
-      const reduction = item.bytes > 0 ? Math.round((1 - webpFile.size / item.bytes) * 100) : 0;
-      const bytes = Array.from(new Uint8Array(await webpFile.arrayBuffer()));
-      await invokeTauriStrict('shelf_store_file', { id: item.id, name: webpFile.name, bytes });
-      setItems((current) => current.map((entry) => entry.id === id ? {
-        ...entry,
-        file: webpFile,
-        name: webpFile.name,
-        bytes: webpFile.size,
-        detail: `${width} × ${height}`,
-        status: reduction > 0 ? `WebP · ${reduction}% smaller · saved` : 'WebP · saved on this device',
-        converted: true,
-      } : entry));
-      showToast(`Converted to WebP${reduction > 0 ? ` · ${reduction}% smaller` : ''}`);
+      const item = await describeFile(pendingScreenshot);
+      const bytes = Array.from(new Uint8Array(await pendingScreenshot.arrayBuffer()));
+      await invokeTauriStrict('shelf_store_file', { id: item.id, name: item.name, bytes });
+      setItems((current) => [{ ...item, status: 'Auto-deletes after 3 days' }, ...current]);
+      onClearPendingScreenshot?.();
+      showToast('Screenshot saved to Shelf');
     } catch (error) {
-      showToast(`Image conversion failed: ${error?.message || error}`);
-    } finally {
-      setBusyAction('');
-    }
+      showToast(`Could not save screenshot: ${error?.message || error}`);
+    } finally { setBusyAction(''); }
   };
 
   const handleZipBatch = async () => {
@@ -447,8 +471,7 @@ export default function ShelfTab({ onCollapse, accent }) {
         type: 'archive',
         detail: `${items.length} files · uncompressed ZIP`,
         status: 'ZIP saved on this device',
-        converted: true,
-      };
+        };
       const bytes = Array.from(new Uint8Array(await zipFile.arrayBuffer()));
       await invokeTauriStrict('shelf_store_file', { id: zipItem.id, name: zipItem.name, bytes });
       await Promise.all(items.map((item) => invokeTauriStrict('shelf_delete_file', { id: item.id })));
@@ -473,7 +496,7 @@ export default function ShelfTab({ onCollapse, accent }) {
               <span className="text-xs font-bold tracking-wide">The Drop Shelf</span>
               <span style={{ backgroundColor: accentBg, borderColor: accentBorder, color: accentColor }} className="rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold">Saved on device</span>
             </div>
-            <p className="truncate text-[10px] text-slate-400">Files stay local and auto-delete after 3 days. Click Shelf, then press Ctrl+V to paste files.</p>
+            <p className="truncate text-[10px] text-slate-400">Files stay local and auto-delete after 3 days. Capture a temporary screen region with Ctrl+Shift+X or Ctrl+Alt+X.</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -514,21 +537,21 @@ export default function ShelfTab({ onCollapse, accent }) {
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div className="mb-2 flex items-center justify-between px-1 text-[10px] text-slate-400">
-            <span>{items.length} {items.length === 1 ? 'item' : 'items'}</span>
+            <span>{visibleItems.length} {visibleItems.length === 1 ? 'item' : 'items'}{draftItem ? ' · 1 temporary' : ''}</span>
             <span>{formatBytes(totalBytes)} stored locally</span>
           </div>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             <AnimatePresence initial={false}>
-              {items.length === 0 ? (
+              {visibleItems.length === 0 ? (
                 <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex h-full min-h-36 flex-col items-center justify-center rounded-2xl border border-white/5 bg-slate-900/20 py-8 text-xs text-slate-500">
                   <Inbox className="mb-1 h-6 w-6 text-slate-600" />
                   <span>Shelf is empty</span>
                   <span className="mt-1 text-[10px] text-slate-600">Add a file to save it to your local Shelf.</span>
                 </motion.div>
-              ) : items.map((item) => (
-                <motion.div key={item.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} className="group flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-slate-900/80 p-2.5 shadow-md transition-colors hover:border-white/20">
+              ) : visibleItems.map((item) => (
+                <motion.div key={item.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} className="group flex flex-col gap-2 rounded-2xl border border-white/10 bg-slate-900/80 p-2.5 shadow-md transition-colors hover:border-white/20">
                   <div className="flex min-w-0 items-center gap-2.5">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-slate-800">{getItemIcon(item.type)}</div>
+                    <ShelfThumbnail item={item} />
                     <div className="min-w-0">
                       <div className="max-w-[230px] truncate text-xs font-bold text-white" title={item.name}>{item.name}</div>
                       <div className="flex min-w-0 items-center gap-1.5 text-[10px] text-slate-400">
@@ -536,15 +559,15 @@ export default function ShelfTab({ onCollapse, accent }) {
                         <span className="text-slate-600">·</span>
                         <span className="truncate font-mono text-slate-500">{item.detail}</span>
                       </div>
-                      <div className="truncate text-[9px] text-cyan-300/80">{item.status}</div>
+                      <div className={`truncate text-[9px] ${item.isDraft ? 'text-amber-200/80' : 'text-cyan-300/80'}`}>{item.status}</div>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {item.type === 'image' && !item.converted && (
-                      <button type="button" onClick={() => handleConvert(item.id)} disabled={Boolean(busyAction)} className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-[10px] font-bold text-cyan-200 transition-colors hover:bg-cyan-500/20 disabled:opacity-40" title="Convert the image to WebP">
-                        {busyAction === item.id ? <LoaderCircle className="h-3 w-3 animate-spin" /> : 'WebP'}
-                      </button>
-                    )}
+                  <div className="flex shrink-0 items-center gap-1 self-end">
+                    {item.isDraft ? <>
+                      <button type="button" onClick={handleSaveScreenshot} disabled={Boolean(busyAction)} className="flex items-center gap-1 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-400/20 disabled:opacity-40"><Save className="h-3 w-3" />Save</button>
+                      <button type="button" onClick={() => handleRemove(item.id)} disabled={Boolean(busyAction)} className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300 disabled:opacity-40" title="Delete temporary screenshot" aria-label="Delete temporary screenshot"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </> : <>
+
                     <button type="button" onClick={() => handleOpen(item)} disabled={Boolean(busyAction)} className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40" title={`Open ${item.name}`} aria-label={`Open ${item.name}`}>
                       <ExternalLink className="h-3.5 w-3.5" />
                     </button>
@@ -560,7 +583,9 @@ export default function ShelfTab({ onCollapse, accent }) {
                     <button type="button" onClick={() => handleRemove(item.id)} disabled={Boolean(busyAction)} className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300 disabled:opacity-40" title="Remove from shelf" aria-label={`Remove ${item.name}`}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
+                    </>}
                   </div>
+                  {item.type === 'link' && item.url && <LinkPreviewCard url={item.url} compact />}
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -585,6 +610,7 @@ export default function ShelfTab({ onCollapse, accent }) {
           <span>Minimize</span>
         </button>
       </div>
+
     </div>
   );
 }

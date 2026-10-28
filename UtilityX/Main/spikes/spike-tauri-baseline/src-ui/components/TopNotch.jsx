@@ -70,7 +70,7 @@ const TABS = [
   { id: 'power', label: 'Power', icon: Power },
 ];
 
-export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent: wallpaperAccent, settingsRequest, onSettingsRequestHandled }) {
+export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent: wallpaperAccent, settingsRequest, onSettingsRequestHandled, pendingScreenshot, onClearPendingScreenshot }) {
   // Stages: 'idle' | 'hovered' | 'full'
   const [stage, setStage] = useState('idle');
   const [activeTab, setActiveTab] = useState('today');
@@ -112,7 +112,24 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
   }, []);
 
   useEffect(() => {
+    const openShelfForScreenshot = () => {
+      setActiveTab('shelf');
+      setStage('full');
+    };
+    window.addEventListener('utilityx-screenshot-added', openShelfForScreenshot);
+    return () => window.removeEventListener('utilityx-screenshot-added', openShelfForScreenshot);
+  }, []);
+
+  useEffect(() => {
     invokeTauri('set_clipboard_focus_mode', { enabled: activeTab === 'clipboard' });
+  }, [activeTab]);
+
+  useEffect(() => {
+    const restoreClipboardFocusMode = () => {
+      invokeTauri('set_clipboard_focus_mode', { enabled: activeTab === 'clipboard' });
+    };
+    window.addEventListener('utilityx-screen-capture-closed', restoreClipboardFocusMode);
+    return () => window.removeEventListener('utilityx-screen-capture-closed', restoreClipboardFocusMode);
   }, [activeTab]);
 
   useEffect(() => {
@@ -493,6 +510,8 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
               {activeTab === 'shelf' && (
                 <ShelfTab 
                   accent={accent}
+                  pendingScreenshot={pendingScreenshot}
+                  onClearPendingScreenshot={onClearPendingScreenshot}
                   onCollapse={() => changeStage('idle')} 
                 />
               )}

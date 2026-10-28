@@ -1,13 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Clipboard, Copy, FileText, Image as ImageIcon, Search, Trash2, Check, ChevronUp } from 'lucide-react';
 import { invokeTauriStrict } from '../../utils/tauriBridge';
+import LinkPreviewCard from '../LinkPreviewCard';
 
 const formatTime = (timestamp) => new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(timestamp * 1000));
+
+function detectLink(value) {
+  const text = value.trim();
+  if (!/^https?:\/\//i.test(text) || /\s/.test(text)) return '';
+  try { const url = new URL(text); return ['http:', 'https:'].includes(url.protocol) ? url.href : ''; }
+  catch { return ''; }
+}
 
 export default function ClipboardTab({ onCollapse, accent }) {
   const [items, setItems] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedText, setSelectedText] = useState('');
+  const [selectedImage, setSelectedImage] = useState('');
+  const [selectedImageError, setSelectedImageError] = useState('');
+  const [selectedUrl, setSelectedUrl] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('All');
   const [copiedId, setCopiedId] = useState(null);
@@ -18,10 +29,6 @@ export default function ClipboardTab({ onCollapse, accent }) {
       const history = await invokeTauriStrict('clipboard_list_items');
       setItems(Array.isArray(history) ? history : []);
       setSelectedId((current) => history?.some((item) => item.id === current) ? current : history?.at(-1)?.id ?? null);
-      const latest = history?.at(-1);
-      if (latest && Date.now() / 1000 - latest.copiedAt < 60) {
-        setQueueUntil((current) => Math.max(current, latest.copiedAt * 1000 + 60_000));
-      }
       setError('');
     } catch (failure) {
       setError(failure?.message || 'Could not read clipboard history.');
@@ -44,12 +51,22 @@ export default function ClipboardTab({ onCollapse, accent }) {
   }), [items, searchQuery, filterType]);
   useEffect(() => {
     let cancelled = false;
-    if (!selectedItem || selectedItem.kind !== 'text') {
+    setSelectedImage('');
+    setSelectedImageError('');
+    setSelectedUrl('');
+    if (!selectedItem) {
       setSelectedText('');
       return undefined;
     }
+    if (selectedItem.kind === 'image') {
+      setSelectedText('');
+      invokeTauriStrict('clipboard_image_preview', { id: selectedItem.id })
+        .then((url) => { if (!cancelled) setSelectedImage(url); })
+        .catch((failure) => { if (!cancelled) setSelectedImageError(failure?.message || 'Could not preview this clipboard image.'); });
+      return () => { cancelled = true; };
+    }
     invokeTauriStrict('clipboard_read_item', { id: selectedItem.id })
-      .then((text) => { if (!cancelled) setSelectedText(text); })
+      .then((text) => { if (!cancelled) { setSelectedText(text); setSelectedUrl(detectLink(text)); } })
       .catch(() => { if (!cancelled) setSelectedText(selectedItem.preview); });
     return () => { cancelled = true; };
   }, [selectedItem?.id, selectedItem?.kind]);
@@ -139,7 +156,11 @@ export default function ClipboardTab({ onCollapse, accent }) {
             {selectedItem && <button onClick={() => copyItem(selectedItem)} style={{ backgroundColor: accentColor, color: '#050505' }} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold">{copiedId === selectedItem.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />} Copy</button>}
           </div>
           <div className="mt-3 flex-1 min-h-0 rounded-xl bg-slate-950/70 border border-white/5 p-3 overflow-y-auto text-xs text-slate-200 font-mono leading-relaxed whitespace-pre-wrap break-words">
-            {selectedItem ? selectedItem.kind === 'image' ? <div className="h-full min-h-28 flex flex-col items-center justify-center text-slate-400"><ImageIcon className="w-8 h-8 mb-2" /><span>Clipboard image</span><span className="text-[10px] mt-1">Click Copy, then paste into an image-compatible app.</span></div> : selectedText || selectedItem.preview : <div className="h-full flex items-center justify-center text-slate-600 font-sans">Select a copied item to preview</div>}
+            {selectedItem ? selectedItem.kind === 'image'
+              ? selectedImage ? <div className="flex h-full min-h-28 flex-col items-center justify-center gap-2"><img src={selectedImage} alt="Copied clipboard image" className="max-h-full max-w-full rounded-lg object-contain" /><span className="text-[10px] text-slate-400">Click Copy, then paste into an image-compatible app.</span></div> : <div className="h-full min-h-28 flex flex-col items-center justify-center text-slate-400"><ImageIcon className="w-8 h-8 mb-2" /><span>{selectedImageError || 'Loading image preview…'}</span></div>
+              : selectedUrl ? <div className="flex h-full flex-col gap-3"><LinkPreviewCard url={selectedUrl} showArchive compact /><div className="break-all text-[10px] text-slate-500">{selectedText || selectedItem.preview}</div></div>
+                : selectedText || selectedItem.preview
+              : <div className="h-full flex items-center justify-center text-slate-600 font-sans">Select a copied item to preview</div>}
           </div>
           {error && <div className="text-[10px] text-rose-300 mt-2">{error}</div>}
           <div className="flex justify-between items-center pt-2 mt-2 border-t border-white/5 text-[10px] text-slate-500"><span>Ctrl+Shift+V · Batch paste oldest to newest</span><span>Local history</span></div>

@@ -208,6 +208,63 @@ fn find_item(dir: &Path, items: &[ClipboardItem], id: &str) -> Result<(Clipboard
     Ok((item, bytes))
 }
 
+fn base64_encode(input: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = String::with_capacity((input.len() + 2) / 3 * 4);
+    for chunk in input.chunks(3) {
+        let a = chunk[0] as u32;
+        let b = chunk.get(1).copied().unwrap_or(0) as u32;
+        let c = chunk.get(2).copied().unwrap_or(0) as u32;
+        let value = (a << 16) | (b << 8) | c;
+        output.push(TABLE[((value >> 18) & 63) as usize] as char);
+        output.push(TABLE[((value >> 12) & 63) as usize] as char);
+        output.push(if chunk.len() > 1 { TABLE[((value >> 6) & 63) as usize] as char } else { '=' });
+        output.push(if chunk.len() > 2 { TABLE[(value & 63) as usize] as char } else { '=' });
+    }
+    output
+}
+
+fn dib_to_bmp(dib: &[u8]) -> Result<Vec<u8>, String> {
+    if dib.len() < 12 { return Err("The copied image data is incomplete.".into()); }
+    let read_u16 = |offset: usize| u16::from_le_bytes([dib[offset], dib[offset + 1]]);
+    let read_u32 = |offset: usize| u32::from_le_bytes([dib[offset], dib[offset + 1], dib[offset + 2], dib[offset + 3]]);
+    let header_size = read_u32(0) as usize;
+    let mut pixel_offset = header_size;
+    let (bit_count, colors_used) = if header_size == 12 {
+        (read_u16(10), 0usize)
+    } else if header_size >= 40 && dib.len() >= 40 {
+        let bit_count = read_u16(14);
+        let compression = read_u32(16);
+        if header_size == 40 && compression == 3 { pixel_offset += 12; }
+        if header_size == 40 && compression == 6 { pixel_offset += 16; }
+        (bit_count, read_u32(32) as usize)
+    } else { return Err("This copied image format cannot be previewed.".into()); };
+    if bit_count <= 8 {
+        let palette_entries = if colors_used > 0 { colors_used } else { 1usize << bit_count };
+        pixel_offset = pixel_offset.saturating_add(palette_entries.saturating_mul(if header_size == 12 { 3 } else { 4 }));
+    }
+    if pixel_offset > dib.len() || dib.len().saturating_add(14) > u32::MAX as usize || pixel_offset + 14 > u32::MAX as usize {
+        return Err("The copied image data is not a valid previewable bitmap.".into());
+    }
+    let mut bmp = Vec::with_capacity(dib.len() + 14);
+    bmp.extend_from_slice(b"BM");
+    bmp.extend_from_slice(&((dib.len() + 14) as u32).to_le_bytes());
+    bmp.extend_from_slice(&[0; 4]);
+    bmp.extend_from_slice(&((pixel_offset + 14) as u32).to_le_bytes());
+    bmp.extend_from_slice(dib);
+    Ok(bmp)
+}
+
+#[tauri::command]
+pub fn clipboard_image_preview(app: AppHandle, id: String) -> Result<String, String> {
+    let _guard = STORE_LOCK.lock().map_err(|_| "Clipboard history is temporarily unavailable.".to_string())?;
+    let dir = data_dir(&app)?;
+    let (item, bytes) = find_item(&dir, &read_index(&dir), &id)?;
+    if item.kind != "image" { return Err("This clipboard item is not an image.".into()); }
+    let bmp = dib_to_bmp(&bytes)?;
+    Ok(format!("data:image/bmp;base64,{}", base64_encode(&bmp)))
+}
+
 unsafe fn put_clipboard_data(format: u32, bytes: &[u8]) -> Result<(), String> {
     if OpenClipboard(null_mut()) == 0 { return Err("Windows clipboard is temporarily unavailable.".into()); }
     let memory = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes.len());

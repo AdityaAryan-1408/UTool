@@ -147,10 +147,14 @@ fn file_path(app: &tauri::AppHandle, id: &str) -> Result<PathBuf, String> {
 pub struct ShelfFileInfo { id: String, name: String, path: String, bytes: u64 }
 
 pub fn import_external_paths(app: &tauri::AppHandle, paths: &[PathBuf]) -> Result<usize, String> {
+    Ok(import_external_paths_with_ids(app, paths)?.len())
+}
+
+pub fn import_external_paths_with_ids(app: &tauri::AppHandle, paths: &[PathBuf]) -> Result<Vec<String>, String> {
     let dir = shelf_dir(app)?;
     if paths.iter().any(|path| path.is_file()) { ensure_expiry_task(&dir)?; }
     cleanup_expired_in(&dir)?;
-    let mut imported = 0;
+    let mut imported_ids = Vec::new();
     for source in paths {
         if !source.is_file() { continue; }
         let original_name = source.file_name().and_then(|name| name.to_str()).unwrap_or("Dropped_File");
@@ -160,9 +164,9 @@ pub fn import_external_paths(app: &tauri::AppHandle, paths: &[PathBuf]) -> Resul
         std::fs::copy(source, &target).map_err(|error| format!("Could not add {} to Shelf: {error}", name))?;
         std::fs::write(dir.join(format!("{id}.name")), &name).map_err(|error| format!("Could not save Shelf item name: {error}"))?;
         write_added_time_if_missing(&dir, &id)?;
-        imported += 1;
+        imported_ids.push(id);
     }
-    Ok(imported)
+    Ok(imported_ids)
 }
 
 #[tauri::command]

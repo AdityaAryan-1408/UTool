@@ -1,6 +1,6 @@
 ﻿# UtilityX current state
 
-Last updated: 2026-10-26
+Last updated: 2026-10-28
 
 ## Source of truth
 
@@ -22,13 +22,30 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Latest build
 
-- Most recent full native build: 2026-10-26, including the draggable Circle Search panel and Markdown rendering. Frontend production and native builds succeeded; the app remains stopped after build-only verification.
-- Latest UI change: Circle Search result panels can be dragged by the header, and Groq answers render common Markdown. The built executable includes this UI change; the app has not been launched for manual verification.
+- Feature 6 Drop Convert was removed from the current app at the user's direction. Dragging files onto the notch still imports them into Shelf; no conversion UI or conversion code remains. The roadmap item is deferred for a future design isolated from the notch hit region.
+- Removed the converter overlay entirely after it left the always-on-top window intercepting clicks. The converter now renders inline in Shelf and cannot create a full-window layer.
+
+- Most recent full native build: 2026-10-28. Includes clipboard image previews, Shelf image thumbnails/link previews, in-memory screenshot drafts, the global Ctrl+Shift+X/Ctrl+Alt+X adjustable screen-capture shortcuts, and native drag-to-Shelf import. Frontend and native builds succeeded after converter removal; the app remains stopped.
+- Latest UI change: Screenshot capture uses an opaque fallback while capture is in progress, preventing the transparent always-on-top app window from showing through. The clipboard history no longer calls an undefined queue timer setter. Native capture now returns a browser-decodable bitmap URL and performs capture work off the WebView thread; the Rectangle/Square selector remains drag-based and displays clearer region-selection guidance.
+- Screen capture is launched globally with Ctrl+Shift+X, has no Shelf button, and switches to Shelf with the selected region as a temporary in-memory draft. The capture flow restores focusability when launched from Clipboard, allowing the region selector to receive pointer input.
+- Ctrl+Alt+X is registered as an alternate capture shortcut in case Ctrl+Shift+X is already claimed by another application. Settings and Shelf mention both.
+- Clipboard image selection previews, Shelf image thumbnails, draggable rectangle/square screen capture with Save/Delete staging, and cached rich link preview cards in Shelf and Clipboard are included in the latest full native build. The user is verifying these features.
 - Previous successful full build: 2026-10-21 (startup recovery; PID 17780).
 - Executable: UtilityX/Main/target/debug/winutilx-task1.exe
 
 ## Change log
 
+- 2026-10-28: Removed Feature 6's converter UI, conversion handlers/module, and converter-related notch focus/region state after repeated invisible-window behavior. Kept native drag-to-Shelf import and the browser-side duplicate-import guard. Frontend and native builds succeeded; app remains stopped.
+
+- 2026-10-28: Fixed Shelf file-drop handling so native Tauri imports are not duplicated by the browser drop handler, and imported files no longer auto-open the conversion sheet. Replaced the converter overlay with an inline Shelf panel; opening it now restores focusability and reasserts the native expanded hit region, and blur will not hide the notch while conversion is active. Frontend and native builds succeeded; canonical UtilityX is running as PID 33232 for manual verification.
+
+- 2026-10-27: Replaced the Shelf screenshot button with global Ctrl+Shift+X capture, documented the shortcut in Settings and Shelf, and switch to Shelf after a region is captured. Ensured capture can receive clicks when launched from Clipboard mode. Frontend production and full native builds succeeded; app was not started.
+- 2026-10-27: Added Ctrl+Alt+X as a second global screen-capture binding after Ctrl+Shift+X did not trigger for the user. Frontend production build and native `cargo check` succeeded; the running executable has not been rebuilt/restarted with this binding.
+
+- 2026-10-27: Made the screenshot overlay's capture/loading fallback opaque to prevent the notch/app UI from appearing over the desktop while a screenshot is being prepared. Frontend build and native `cargo check` succeeded; app restart remains pending.
+- 2026-10-27: Fixed the undefined clipboard queue timer reference and moved screen-capture work off the WebView thread. Native capture now supplies a BMP data URL for asynchronous browser decoding, leaving the UI responsive for dragging a region. Frontend build and native `cargo check` succeeded; app restart remains pending.
+
+- 2026-10-27: Added clipboard image preview from stored Windows DIB data, local image thumbnails in Shelf, temporary adjustable rectangle/square screen captures that remain in memory until explicitly saved or deleted, and cached rich HTTP(S) link previews on Shelf and Clipboard with browser open, clean URL copy, and Archive to Shelf. Marked Future Updates item 5 implemented. Frontend build and native build succeeded (one existing unused `UnregisterHotKey` warning); app remains stopped for manual verification.
 - 2026-10-26: Made the Circle Search answer panel draggable from its header and added safe rendering for common Markdown headings, lists, emphasis, inline code, and HTTP(S) links. Frontend production build succeeded; the app was not restarted.
 - 2026-10-24: Completed Power tab actions: Lock, Sleep, Restart, Shutdown, and Quit UtilityX. Replaced browser confirmation prompts with themed in-app confirmation dialogs, removed the inaccurate wallpaper-cycle warning, and increased the Power tab height so its Minimize control fits. User close requests still hide the app, while the explicit Quit command exits it. Frontend and native builds succeeded; restarted canonical UtilityX as PID 29740. Power actions remain unverified by design.
 - 2026-10-24: Added keyword search for online wallpapers. Searches combine with the selected Wallhaven category, safely encode the query, and cache results by category plus term until Refresh. Frontend and native builds succeeded; restarted canonical UtilityX as PID 16488 for manual verification.
@@ -55,8 +72,8 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Runtime status
 
-- Server status: running the current startup recovery build (PID 17780) for manual verification.
-- Running process: PID 17780, `UtilityX/Main/target/debug/winutilx-task1.exe`.
+- Server status: stopped at the user's direction.
+- Running process: none.
 - 2026-10-20: Removed the Shelf drag-out button, frontend handler, native command, and drag implementation at the user's direction. Copy, Save As, and Delete remain available. Frontend and native builds succeeded; relaunching for manual retest.
 - 2026-10-20: Follow-up Shelf retest fixes: use a Shell-created data object and non-canonical AppData path for drag-out; add Save As and Shelf Location actions; capture pasted image data from web pages. Pasting a URL does not start a network download.
 
@@ -95,6 +112,20 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 - 2026-10-26: Switched Circle Search from Gemini to Groq's Qwen 3.8 27B vision model using Groq Chat Completions with a base64 image data URL. Updated API-key settings and DPAPI storage to Groq, and remove the obsolete encrypted Gemini key when a Groq key is saved or removed. Removed the Gemini web-grounding action because it is not available through this Groq request; the separate Google text-search action remains. Frontend production build and native build succeeded (one existing unused `UnregisterHotKey` warning); launched canonical app as PID 31460 for key entry and manual verification.
 
 - 2026-10-20: Moved Shelf to the first tab and Controls to second-last. Implemented persistent per-item Shelf storage under the app's local app-data folder, restore on app start, native Windows file drag-out, open with the system default app, reveal in Explorer, copy-file-to-clipboard for pasting into other apps, download, remove, clear, WebP conversion, and ZIP creation. Frontend production build and native `cargo check` succeeded. The app has not been launched for runtime testing; the user will verify the features manually.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

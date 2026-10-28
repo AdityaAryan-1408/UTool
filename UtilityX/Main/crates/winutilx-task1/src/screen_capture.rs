@@ -7,7 +7,7 @@ use std::mem::size_of;
 pub struct ScreenCapture {
     pub width: u32,
     pub height: u32,
-    pub bgra_base64: String,
+    pub bitmap_data_url: String,
 }
 
 #[repr(C)]
@@ -119,23 +119,48 @@ pub fn capture_primary_screen() -> Result<ScreenCapture, String> {
         DeleteDC(memory);
         ReleaseDC(std::ptr::null_mut(), screen);
         if rows == 0 { return Err("Windows could not read the captured display pixels.".into()); }
-        Ok(ScreenCapture { width: width as u32, height: height as u32, bgra_base64: base64_encode(&pixels) })
+        for pixel in pixels.chunks_exact_mut(4) { pixel[3] = 255; }
+        let image_size = pixels.len() as u32;
+        let file_size = 54u32.saturating_add(image_size);
+        let mut bmp = Vec::with_capacity(file_size as usize);
+        bmp.extend_from_slice(b"BM");
+        bmp.extend_from_slice(&file_size.to_le_bytes());
+        bmp.extend_from_slice(&[0; 4]);
+        bmp.extend_from_slice(&54u32.to_le_bytes());
+        bmp.extend_from_slice(&40u32.to_le_bytes());
+        bmp.extend_from_slice(&width.to_le_bytes());
+        bmp.extend_from_slice(&(-height).to_le_bytes());
+        bmp.extend_from_slice(&1u16.to_le_bytes());
+        bmp.extend_from_slice(&32u16.to_le_bytes());
+        bmp.extend_from_slice(&0u32.to_le_bytes());
+        bmp.extend_from_slice(&image_size.to_le_bytes());
+        bmp.extend_from_slice(&[0; 16]);
+        bmp.extend_from_slice(&pixels);
+        let bitmap_data_url = format!("data:image/bmp;base64,{}", base64_encode(&bmp));
+        Ok(ScreenCapture { width: width as u32, height: height as u32, bitmap_data_url })
     }
 }
 
 #[tauri::command]
-pub fn capture_screen(window: tauri::WebviewWindow) -> Result<ScreenCapture, String> {
-    // The app's always-on-top overlay obscures the desktop. Briefly hide it so
-    // the captured pixels come from the screen underneath the lasso.
+pub async fn capture_screen(window: tauri::WebviewWindow) -> Result<ScreenCapture, String> {
+    // Hide and restore on the Tauri command thread. Some Windows WebView
+    // backends wait for their window thread when show/hide is called from a
+    // blocking worker, leaving the frontend stuck at "Capturing screen…".
     let was_visible = window.is_visible().unwrap_or(false);
     if was_visible {
-        let _ = window.hide();
-        std::thread::sleep(std::time::Duration::from_millis(90));
+        window.hide().map_err(|error| format!("Could not hide UtilityX for screen capture: {error}"))?;
     }
-    let result = capture_primary_screen();
+
+    let capture_task = tauri::async_runtime::spawn_blocking(|| {
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        capture_primary_screen()
+    }).await;
+
     if was_visible {
         let _ = window.show();
         let _ = window.set_skip_taskbar(true);
+        let _ = window.set_focus();
     }
-    result
+
+    capture_task.map_err(|error| format!("Screen capture task failed: {error}"))?
 }

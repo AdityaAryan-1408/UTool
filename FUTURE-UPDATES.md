@@ -1,6 +1,6 @@
 # UtilityX — Future Updates & Feature Roadmap
 
-Last updated: 2026-10-20
+Last updated: 2026-10-27
 
 ---
 
@@ -68,7 +68,7 @@ Last updated: 2026-10-20
 
 ---
 
-### 4. Clipboard Chain & Multi-Paste Queue — "Stack Paste"
+### 4. Clipboard Chain & Multi-Paste Queue — "Stack Paste" - Done
 
 **Persona:** 💻 Developer + 👤 General User
 
@@ -89,6 +89,8 @@ Last updated: 2026-10-20
 
 ### 5. Rich Link Preview Cards — "Link Preview"
 
+**Status: Implemented in UtilityX/Main.** Shelf and Clipboard detect HTTP(S) links, fetch a bounded page preview, and show cached metadata offline.
+
 **Problem:** Pasting a URL into the Shelf or Clipboard currently stores it as a raw text string. You can't tell at a glance what the link is — whether it's a GitHub repo, a YouTube video, an Amazon product, or a documentation page.
 
 **Feature:**
@@ -102,8 +104,8 @@ Last updated: 2026-10-20
 - Works offline for previously fetched links (metadata is cached locally).
 
 **Technical Integration:**
-- Rust-side HTTP HEAD/GET request with a small body limit (~64 KB) to parse `<meta>` tags.
-- HTML meta tag parser (regex or a lightweight HTML parser like `scraper` crate).
+- Rust-side WinHTTP GET with a 64 KB body limit to read page metadata without blocking the UI thread.
+- Parses Open Graph/title/description and favicon tags, resolves relative preview URLs, and caches results under UtilityX app data for offline viewing.
 - Cached in the Shelf's local app data alongside the file entries.
 
 ---
@@ -128,6 +130,8 @@ Last updated: 2026-10-20
 - Video/audio via bundled FFmpeg binary or Windows Media Foundation codecs.
 - Text format conversions via lightweight Rust parsers (`serde_json`, `serde_yaml`, `csv`).
 - Conversion runs on a background thread with a progress indicator in the notch.
+
+**Status (2026-10-28):** The converter UI was removed at user direction after the full-screen transparent notch became invisible while still intercepting clicks. Dragging files to the notch and adding them to Shelf remains supported. Revisit conversion only with a design isolated from the notch's full-screen hit region.
 
 ---
 
@@ -243,7 +247,7 @@ Last updated: 2026-10-20
   - **Circle Search:** "What's this on my screen?" → triggers Circle Search capture and sends to vision model.
   - **Today Tab:** "Add 'submit ML assignment' to my tasks for Friday" → agent creates a task and D-Day deadline.
   - **Power Actions:** "Lock my PC in 30 minutes" → schedules a delayed lock command.
-  - **Shelf Actions:** "Convert that screenshot I just dropped to WebP" → agent invokes Drop Convert.
+  - **Shelf Actions:** "Archive that link I just dropped" → agent saves the link to Shelf.
   - **Open Apps:** "Open VS Code and Chrome side by side" → agent launches apps and positions windows.
 - **Memory Integration:** Every conversation is informed by the persistent Memory store (Feature #10). The agent remembers your preferences, project context, and past interactions.
 - **Multi-Model Support:**
