@@ -7,7 +7,14 @@
     "frontendDist": "../../spikes/spike-tauri-baseline/dist"
   },
   "bundle": {
-    "icon": ["icons/icon.ico"]
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "icon": ["icons/icon.ico"],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   },
   "app": {
     "windows": [
