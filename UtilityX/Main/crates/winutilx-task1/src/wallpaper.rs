@@ -95,7 +95,7 @@ pub struct LocalWallpaper {
 }
 
 fn wallpaper_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_data_dir().map_err(|error| format!("Could not locate UtilityX app data: {error}"))?.join("wallpapers");
+    let dir = app.path().app_data_dir().map_err(|error| format!("Could not locate Ollumi app data: {error}"))?.join("wallpapers");
     std::fs::create_dir_all(&dir).map_err(|error| format!("Could not create the wallpaper folder: {error}"))?;
     Ok(dir)
 }
@@ -129,7 +129,7 @@ fn fetch_online_blocking(category: &str, query: &str) -> Result<Vec<OnlineWallpa
         return Err("Search terms must be 100 characters or fewer and contain no control characters.".into());
     }
     let encoded_query = percent_encode_query(query);
-    let agent: Vec<u16> = "UtilityX Wallpaper Browser".encode_utf16().chain(Some(0)).collect();
+    let agent: Vec<u16> = "Ollumi Wallpaper Browser".encode_utf16().chain(Some(0)).collect();
     let host: Vec<u16> = "wallhaven.cc".encode_utf16().chain(Some(0)).collect();
     let query_parameter = if encoded_query.is_empty() { String::new() } else { format!("&q={encoded_query}") };
     let path: Vec<u16> = format!("/api/v1/search?sorting=random&purity=100&categories={category_filter}&atleast=1920x1080{query_parameter}").encode_utf16().chain(Some(0)).collect();
@@ -212,7 +212,7 @@ fn download_wallhaven_url(url: &str, max_bytes: usize) -> Result<(String, Vec<u8
     let (host, path) = rest.split_once('/').ok_or("Invalid wallpaper image URL.")?;
     if !["w.wallhaven.cc", "th.wallhaven.cc", "wallhaven.cc"].contains(&host) { return Err("Wallpaper image host is not allowed.".into()); }
     let path = format!("/{path}");
-    let agent: Vec<u16> = "UtilityX Wallpaper Download".encode_utf16().chain(Some(0)).collect();
+    let agent: Vec<u16> = "Ollumi Wallpaper Download".encode_utf16().chain(Some(0)).collect();
     let host_w: Vec<u16> = host.encode_utf16().chain(Some(0)).collect();
     let path_w: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
     let mut body = Vec::new();
@@ -323,7 +323,7 @@ pub fn wallpaper_set_local(app: tauri::AppHandle, id: String) -> Result<(), Stri
     if filename != id || id.contains("..") { return Err("Invalid wallpaper identifier".into()); }
     safe_extension(filename)?;
     let path = wallpaper_dir(&app)?.join(filename);
-    if !path.is_file() { return Err("That wallpaper is no longer in UtilityX storage.".into()); }
+    if !path.is_file() { return Err("That wallpaper is no longer in Ollumi storage.".into()); }
     apply_wallpaper_path(&path)
 }
 
@@ -343,7 +343,7 @@ fn save_wallpaper_as_blocking(app: tauri::AppHandle, id: String) -> Result<Optio
     let filename = std::path::Path::new(&id).file_name().and_then(|value| value.to_str()).ok_or("Invalid wallpaper identifier")?;
     if filename != id || id.contains("..") { return Err("Invalid wallpaper identifier".into()); }
     let source = wallpaper_dir(&app)?.join(filename);
-    if !source.is_file() { return Err("That wallpaper is no longer in UtilityX storage.".into()); }
+    if !source.is_file() { return Err("That wallpaper is no longer in Ollumi storage.".into()); }
     let mut file_name: Vec<u16> = filename.encode_utf16().chain([0]).collect();
     file_name.resize(32768, 0);
     let filter: Vec<u16> = "Image files\0*.jpg;*.jpeg;*.png;*.webp;*.bmp\0All files\0*.*\0\0".encode_utf16().collect();

@@ -6,6 +6,8 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::ffi::c_void;
+use std::sync::atomic::AtomicBool;
 use tauri::{AppHandle, Manager};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::Foundation::GlobalFree;
@@ -17,9 +19,28 @@ const CF_UNICODETEXT: u32 = 13;
 const CF_DIB: u32 = 8;
 const CF_DIBV5: u32 = 17;
 const MAX_PREVIEW_CHARS: usize = 160;
+const MAX_HISTORY_ITEMS: usize = 500;
+const HISTORY_RETENTION_SECS: u64 = 30 * 24 * 60 * 60;
+const PROTECTED_PREFIX: &[u8; 5] = b"UXDP1";
 static ITEM_COUNTER: AtomicU64 = AtomicU64::new(1);
 static STORE_LOCK: Mutex<()> = Mutex::new(());
 static OWN_WRITES: OnceLock<Mutex<VecDeque<(String, Vec<u8>)>>> = OnceLock::new();
+static CAPTURE_ENABLED: AtomicBool = AtomicBool::new(true);
+
+#[repr(C)]
+struct DataBlob { size: u32, data: *mut u8 }
+
+#[link(name = "Crypt32")]
+extern "system" {
+    fn CryptProtectData(input: *const DataBlob, description: *const u16, entropy: *const DataBlob, reserved: *mut c_void, prompt: *mut c_void, flags: u32, output: *mut DataBlob) -> i32;
+    fn CryptUnprotectData(input: *const DataBlob, description: *mut *mut u16, entropy: *const DataBlob, reserved: *mut c_void, prompt: *mut c_void, flags: u32, output: *mut DataBlob) -> i32;
+}
+
+#[link(name = "Kernel32")]
+extern "system" { fn LocalFree(memory: *mut c_void) -> *mut c_void; }
+
+#[link(name = "user32")]
+extern "system" { fn RegisterClipboardFormatW(name: *const u16) -> u32; }
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,38 +58,117 @@ pub struct ClipboardItem {
 fn default_image_format() -> u32 { CF_DIB }
 
 fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let path = app.path().app_data_dir().map_err(|error| format!("Could not locate UtilityX app data: {error}"))?.join("clipboard");
+    let path = app.path().app_data_dir().map_err(|error| format!("Could not locate Ollumi app data: {error}"))?.join("clipboard");
     std::fs::create_dir_all(&path).map_err(|error| format!("Could not create clipboard history: {error}"))?;
     Ok(path)
 }
 
 fn index_path(dir: &Path) -> PathBuf { dir.join("history.json") }
 
-fn read_index(dir: &Path) -> Vec<ClipboardItem> {
-    std::fs::read(index_path(dir)).ok().and_then(|data| serde_json::from_slice(&data).ok()).unwrap_or_default()
+fn protect_bytes(clear: &[u8]) -> Result<Vec<u8>, String> {
+    const CRYPTPROTECT_UI_FORBIDDEN: u32 = 0x1;
+    let mut input_bytes = clear.to_vec();
+    let input = DataBlob { size: input_bytes.len() as u32, data: input_bytes.as_mut_ptr() };
+    let mut output = DataBlob { size: 0, data: null_mut() };
+    let ok = unsafe { CryptProtectData(&input, null(), null(), null_mut(), null_mut(), CRYPTPROTECT_UI_FORBIDDEN, &mut output) };
+    input_bytes.fill(0);
+    if ok == 0 { return Err("Windows could not encrypt clipboard history for this account.".into()); }
+    let mut protected = PROTECTED_PREFIX.to_vec();
+    protected.extend_from_slice(unsafe { std::slice::from_raw_parts(output.data, output.size as usize) });
+    unsafe { LocalFree(output.data.cast()); }
+    Ok(protected)
 }
 
+fn unprotect_bytes(protected: &[u8]) -> Result<Vec<u8>, String> {
+    const CRYPTPROTECT_UI_FORBIDDEN: u32 = 0x1;
+    if !protected.starts_with(PROTECTED_PREFIX) { return Ok(protected.to_vec()); }
+    let encrypted = &protected[PROTECTED_PREFIX.len()..];
+    let input = DataBlob { size: encrypted.len() as u32, data: encrypted.as_ptr() as *mut u8 };
+    let mut output = DataBlob { size: 0, data: null_mut() };
+    let ok = unsafe { CryptUnprotectData(&input, null_mut(), null(), null_mut(), null_mut(), CRYPTPROTECT_UI_FORBIDDEN, &mut output) };
+    if ok == 0 { return Err("Windows could not decrypt this account's clipboard history.".into()); }
+    let clear = unsafe { std::slice::from_raw_parts(output.data, output.size as usize).to_vec() };
+    unsafe { LocalFree(output.data.cast()); }
+    Ok(clear)
+}
+
+fn is_protected_file(bytes: &[u8]) -> bool { bytes.starts_with(PROTECTED_PREFIX) }
+
 fn write_index(dir: &Path, items: &[ClipboardItem]) -> Result<(), String> {
-    let bytes = serde_json::to_vec(items).map_err(|error| error.to_string())?;
+    let mut clear = serde_json::to_vec(items).map_err(|error| error.to_string())?;
+    let bytes = protect_bytes(&clear)?;
+    clear.fill(0);
     let temporary = dir.join("history.json.tmp");
     std::fs::write(&temporary, bytes).map_err(|error| format!("Could not save clipboard history: {error}"))?;
     std::fs::rename(temporary, index_path(dir)).map_err(|error| format!("Could not update clipboard history: {error}"))
 }
 
+fn read_index(dir: &Path) -> Result<Vec<ClipboardItem>, String> {
+    let path = index_path(dir);
+    let stored = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("Could not read clipboard history: {error}")),
+    };
+    let was_protected = is_protected_file(&stored);
+    let mut clear = unprotect_bytes(&stored)?;
+    let mut items: Vec<ClipboardItem> = serde_json::from_slice(&clear)
+        .map_err(|error| format!("Could not decode clipboard history: {error}"))?;
+    clear.fill(0);
+
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    let cutoff = now.saturating_sub(HISTORY_RETENTION_SECS);
+    let old_len = items.len();
+    items.retain(|item| item.copied_at >= cutoff && dir.join(&item.file).is_file());
+    if items.len() > MAX_HISTORY_ITEMS { items.drain(..items.len() - MAX_HISTORY_ITEMS); }
+    let retained: std::collections::HashSet<&str> = items.iter().map(|item| item.file.as_str()).collect();
+    let mut changed = !was_protected || items.len() != old_len;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let Some(file_name) = file_name.to_str() else { continue; };
+            if (file_name.ends_with(".txt") || file_name.ends_with(".dib")) && !retained.contains(file_name) {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    for item in &items {
+        let item_path = dir.join(&item.file);
+        let bytes = std::fs::read(&item_path).map_err(|error| format!("Could not read clipboard history item: {error}"))?;
+        if !is_protected_file(&bytes) {
+            let protected = protect_bytes(&bytes)?;
+            std::fs::write(&item_path, protected).map_err(|error| format!("Could not protect clipboard history item: {error}"))?;
+            changed = true;
+        }
+    }
+    if changed { write_index(dir, &items)?; }
+    Ok(items)
+}
+
 fn notify(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.eval("window.dispatchEvent(new Event('utilityx-clipboard-history-updated'))");
+        let _ = window.eval("window.dispatchEvent(new Event('ollumi-clipboard-history-updated'))");
     }
+}
+
+fn read_payload(path: &Path) -> Result<Vec<u8>, String> {
+    let stored = std::fs::read(path).map_err(|error| format!("Could not read clipboard item: {error}"))?;
+    let was_protected = is_protected_file(&stored);
+    let clear = unprotect_bytes(&stored)?;
+    if !was_protected {
+        std::fs::write(path, protect_bytes(&clear)?).map_err(|error| format!("Could not protect clipboard item: {error}"))?;
+    }
+    Ok(clear)
 }
 
 fn save_capture(app: &AppHandle, kind: &str, format: u32, payload: &[u8], preview: String) -> Result<(), String> {
     if consume_own_write(kind, payload) { return Ok(()); }
     let _guard = STORE_LOCK.lock().map_err(|_| "Clipboard history is temporarily unavailable.".to_string())?;
     let dir = data_dir(app)?;
-    let mut items = read_index(&dir);
+    let mut items = read_index(&dir)?;
     if let Some(latest) = items.last() {
         if latest.kind == kind {
-            if let Ok(previous) = std::fs::read(dir.join(&latest.file)) {
+            if let Ok(previous) = read_payload(&dir.join(&latest.file)) {
                 if previous == payload { return Ok(()); }
             }
         }
@@ -78,7 +178,7 @@ fn save_capture(app: &AppHandle, kind: &str, format: u32, payload: &[u8], previe
     let id = format!("{millis}-{sequence}");
     let extension = if kind == "image" { "dib" } else { "txt" };
     let file = format!("{id}.{extension}");
-    std::fs::write(dir.join(&file), payload).map_err(|error| format!("Could not save clipboard item: {error}"))?;
+    std::fs::write(dir.join(&file), protect_bytes(payload)?).map_err(|error| format!("Could not save clipboard item: {error}"))?;
     items.push(ClipboardItem {
         id,
         kind: kind.to_string(),
@@ -88,6 +188,10 @@ fn save_capture(app: &AppHandle, kind: &str, format: u32, payload: &[u8], previe
         format,
         file,
     });
+    if items.len() > MAX_HISTORY_ITEMS {
+        let removed = items.drain(..items.len() - MAX_HISTORY_ITEMS).collect::<Vec<_>>();
+        for item in removed { let _ = std::fs::remove_file(dir.join(item.file)); }
+    }
     write_index(&dir, &items)?;
     drop(_guard);
     notify(app);
@@ -125,7 +229,36 @@ fn read_clipboard_memory(format: u32) -> Option<Vec<u8>> {
     }
 }
 
+fn registered_clipboard_format(name: &str) -> u32 {
+    let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+    unsafe { RegisterClipboardFormatW(wide.as_ptr()) }
+}
+
+unsafe fn clipboard_has_privacy_marker(name: &str) -> bool {
+    let format = registered_clipboard_format(name);
+    format != 0 && IsClipboardFormatAvailable(format) != 0
+}
+
+unsafe fn should_skip_clipboard_capture() -> bool {
+    if clipboard_has_privacy_marker("ExcludeClipboardContentFromMonitorProcessing")
+        || clipboard_has_privacy_marker("Clipboard Viewer Ignore") {
+        return true;
+    }
+    let include_format = registered_clipboard_format("CanIncludeInClipboardHistory");
+    if include_format != 0 && IsClipboardFormatAvailable(include_format) != 0 {
+        return read_clipboard_memory(include_format)
+            .and_then(|bytes| {
+                let value: [u8; 4] = bytes.get(..4)?.try_into().ok()?;
+                Some(u32::from_le_bytes(value))
+            })
+            .map(|include| include == 0)
+            .unwrap_or(true);
+    }
+    false
+}
+
 fn capture_clipboard(app: &AppHandle) {
+    if !CAPTURE_ENABLED.load(Ordering::Acquire) { return; }
     unsafe {
         let mut opened = false;
         for _ in 0..8 {
@@ -133,6 +266,10 @@ fn capture_clipboard(app: &AppHandle) {
             std::thread::sleep(Duration::from_millis(12));
         }
         if !opened { return; }
+        if should_skip_clipboard_capture() {
+            CloseClipboard();
+            return;
+        }
 
         let image_format = if IsClipboardFormatAvailable(CF_DIBV5) != 0 { CF_DIBV5 }
             else if IsClipboardFormatAvailable(CF_DIB) != 0 { CF_DIB }
@@ -171,8 +308,35 @@ fn format_bytes(bytes: u64) -> String {
     else { format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0)) }
 }
 
+fn capture_preference_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app.path().app_data_dir().map_err(|error| format!("Could not locate Ollumi app data: {error}"))?.join("clipboard").join("capture-enabled"))
+}
+
+#[tauri::command]
+pub fn clipboard_capture_status() -> bool { CAPTURE_ENABLED.load(Ordering::Acquire) }
+
+#[tauri::command]
+pub fn clipboard_set_capture_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let path = capture_preference_path(&app)?;
+    let parent = path.parent().ok_or_else(|| "Could not locate clipboard settings storage.".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|error| format!("Could not prepare clipboard settings: {error}"))?;
+    std::fs::write(path, if enabled { &b"true"[..] } else { &b"false"[..] })
+        .map_err(|error| format!("Could not save clipboard capture preference: {error}"))?;
+    CAPTURE_ENABLED.store(enabled, Ordering::Release);
+    Ok(())
+}
+
 pub fn start_listener(app: AppHandle) {
-    std::thread::spawn(move || unsafe {
+    if let Ok(path) = capture_preference_path(&app) {
+        if let Ok(value) = std::fs::read_to_string(path) {
+            CAPTURE_ENABLED.store(value.trim() != "false", Ordering::Release);
+        }
+    }
+    std::thread::spawn(move || {
+        if let Ok(_guard) = STORE_LOCK.lock() {
+            if let Ok(dir) = data_dir(&app) { let _ = read_index(&dir); }
+        }
+        unsafe {
         let class_name: Vec<u16> = "UtilityXClipboardMessageWindow".encode_utf16().chain(Some(0)).collect();
         let instance = GetModuleHandleW(null());
         let class = WNDCLASSW {
@@ -199,12 +363,13 @@ pub fn start_listener(app: AppHandle) {
             DispatchMessageW(&message);
         }
         RemoveClipboardFormatListener(hwnd);
+        }
     });
 }
 
 fn find_item(dir: &Path, items: &[ClipboardItem], id: &str) -> Result<(ClipboardItem, Vec<u8>), String> {
     let item = items.iter().find(|item| item.id == id).cloned().ok_or("Clipboard item was not found.")?;
-    let bytes = std::fs::read(dir.join(&item.file)).map_err(|error| format!("Could not read clipboard item: {error}"))?;
+    let bytes = read_payload(&dir.join(&item.file))?;
     Ok((item, bytes))
 }
 
@@ -259,7 +424,7 @@ fn dib_to_bmp(dib: &[u8]) -> Result<Vec<u8>, String> {
 pub fn clipboard_image_preview(app: AppHandle, id: String) -> Result<String, String> {
     let _guard = STORE_LOCK.lock().map_err(|_| "Clipboard history is temporarily unavailable.".to_string())?;
     let dir = data_dir(&app)?;
-    let (item, bytes) = find_item(&dir, &read_index(&dir), &id)?;
+    let (item, bytes) = find_item(&dir, &read_index(&dir)?, &id)?;
     if item.kind != "image" { return Err("This clipboard item is not an image.".into()); }
     let bmp = dib_to_bmp(&bytes)?;
     Ok(format!("data:image/bmp;base64,{}", base64_encode(&bmp)))
@@ -303,14 +468,14 @@ fn set_item_clipboard(item: &ClipboardItem, bytes: &[u8]) -> Result<(), String> 
 pub fn clipboard_list_items(app: AppHandle) -> Result<Vec<ClipboardItem>, String> {
     let _guard = STORE_LOCK.lock().map_err(|_| "Clipboard history is temporarily unavailable.".to_string())?;
     let dir = data_dir(&app)?;
-    Ok(read_index(&dir))
+    read_index(&dir)
 }
 
 #[tauri::command]
 pub fn clipboard_read_item(app: AppHandle, id: String) -> Result<String, String> {
     let _guard = STORE_LOCK.lock().map_err(|_| "Clipboard history is temporarily unavailable.".to_string())?;
     let dir = data_dir(&app)?;
-    let (item, bytes) = find_item(&dir, &read_index(&dir), &id)?;
+    let (item, bytes) = find_item(&dir, &read_index(&dir)?, &id)?;
     if item.kind != "text" { return Err("This clipboard item is an image.".into()); }
     String::from_utf8(bytes).map_err(|error| format!("Could not decode clipboard text: {error}"))
 }
@@ -319,7 +484,7 @@ pub fn clipboard_read_item(app: AppHandle, id: String) -> Result<String, String>
 pub fn clipboard_copy_item(app: AppHandle, id: String) -> Result<(), String> {
     let _guard = STORE_LOCK.lock().map_err(|_| "Clipboard history is temporarily unavailable.".to_string())?;
     let dir = data_dir(&app)?;
-    let (item, bytes) = find_item(&dir, &read_index(&dir), &id)?;
+    let (item, bytes) = find_item(&dir, &read_index(&dir)?, &id)?;
     set_item_clipboard(&item, &bytes)
 }
 
@@ -327,7 +492,7 @@ pub fn clipboard_copy_item(app: AppHandle, id: String) -> Result<(), String> {
 pub fn clipboard_delete_item(app: AppHandle, id: String) -> Result<(), String> {
     let _guard = STORE_LOCK.lock().map_err(|_| "Clipboard history is temporarily unavailable.".to_string())?;
     let dir = data_dir(&app)?;
-    let mut items = read_index(&dir);
+    let mut items = read_index(&dir)?;
     let Some(index) = items.iter().position(|item| item.id == id) else { return Err("Clipboard item was not found.".into()); };
     let item = items.remove(index);
     let _ = std::fs::remove_file(dir.join(item.file));
@@ -341,7 +506,7 @@ pub fn clipboard_delete_item(app: AppHandle, id: String) -> Result<(), String> {
 pub fn clipboard_clear(app: AppHandle) -> Result<(), String> {
     let _guard = STORE_LOCK.lock().map_err(|_| "Clipboard history is temporarily unavailable.".to_string())?;
     let dir = data_dir(&app)?;
-    let items = read_index(&dir);
+    let items = read_index(&dir)?;
     for item in items { let _ = std::fs::remove_file(dir.join(item.file)); }
     write_index(&dir, &[])?;
     drop(_guard);
@@ -350,11 +515,14 @@ pub fn clipboard_clear(app: AppHandle) -> Result<(), String> {
 }
 
 pub fn batch_paste(app: &AppHandle) -> Result<usize, String> {
-    let items = clipboard_list_items(app.clone())?;
+    let mut items = clipboard_list_items(app.clone())?;
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    items.retain(|item| now.saturating_sub(item.copied_at) <= 60);
+    if items.len() > 5 { items.drain(..items.len() - 5); }
     if items.is_empty() { return Ok(0); }
     let dir = data_dir(app)?;
     for item in &items {
-        let bytes = std::fs::read(dir.join(&item.file)).map_err(|error| format!("Could not read clipboard item: {error}"))?;
+        let bytes = read_payload(&dir.join(&item.file))?;
         set_item_clipboard(item, &bytes)?;
         std::thread::sleep(Duration::from_millis(120));
         unsafe {

@@ -2,21 +2,22 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Bell, Check, ChevronUp, EyeOff, ExternalLink, Info, Pin, PinOff, RefreshCw, Search, Smartphone, StickyNote } from 'lucide-react';
 import { invokeTauriStrict } from '../../utils/tauriBridge';
+import { readPreference } from '../../utils/ollumi';
 
-const PREFS_KEY = 'utilityx-app-preferences-v1';
-const HIDDEN_APPS_KEY = 'utilityx-hidden-apps-v1';
-const APPS_CACHE_KEY = 'utilityx-installed-apps-cache-v1';
+const PREFS_KEY = 'ollumi-app-preferences-v1';
+const HIDDEN_APPS_KEY = 'ollumi-hidden-apps-v1';
+const APPS_CACHE_KEY = 'ollumi-installed-apps-cache-v1';
 
 function readPreferences() {
   try {
-    const value = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+    const value = JSON.parse(readPreference(PREFS_KEY, ['utilityx-app-preferences-v1'], '{}'));
     return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   } catch { return {}; }
 }
 
 function readHiddenApps() {
   try {
-    const value = JSON.parse(localStorage.getItem(HIDDEN_APPS_KEY) || '[]');
+    const value = JSON.parse(readPreference(HIDDEN_APPS_KEY, ['utilityx-hidden-apps-v1'], '[]'));
     return Array.isArray(value) ? value : [];
   } catch { return []; }
 }
@@ -53,7 +54,7 @@ export default function AppsTab({ onCollapse }) {
   useEffect(() => {
     let active = true;
     try {
-      const cached = JSON.parse(localStorage.getItem(APPS_CACHE_KEY) || 'null');
+      const cached = JSON.parse(readPreference(APPS_CACHE_KEY, ['utilityx-installed-apps-cache-v1'], 'null'));
       if (Array.isArray(cached)) {
         setApps(cached);
         setLoading(false);
@@ -195,7 +196,7 @@ export default function AppsTab({ onCollapse }) {
                 <button type="button" onClick={() => saveDetails(app)} className="flex items-center gap-1 rounded-[8px] bg-[#F5F7FF] px-2.5 py-1.5 text-[9px] font-semibold text-black"><Check className="h-3 w-3" />Save</button>
               </div>
             </div>
-            <p className="mt-1.5 flex items-center gap-1 text-[8px] text-[#707870]"><Info className="h-2.5 w-2.5" />Reminders appear in UtilityX while it is running; notes and times are saved on this PC.</p>
+            <p className="mt-1.5 flex items-center gap-1 text-[8px] text-[#707870]"><Info className="h-2.5 w-2.5" />Reminders appear in Ollumi while it is running; notes and times are saved on this PC.</p>
           </div>
         )}
       </div>
@@ -221,7 +222,7 @@ export default function AppsTab({ onCollapse }) {
         <div className="flex flex-1 flex-col items-center justify-center rounded-[16px] border border-dashed border-white/[0.1] bg-white/[0.015] px-8 text-center">
           <span className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-white/[0.09] bg-white/[0.04]"><Smartphone className="h-5 w-5 text-[#D4D8D1]" /></span>
           <p className="mt-3 text-[12px] font-semibold text-[#E4E7E0]">Android apps</p>
-          <p className="mt-1.5 max-w-[300px] text-[10px] leading-4 text-[#858D85]">Will be implemented with the UtilityX phone companion. Connect your phone to open and manage its apps here.</p>
+          <p className="mt-1.5 max-w-[300px] text-[10px] leading-4 text-[#858D85]">Will be implemented with the Ollumi phone companion. Connect your phone to open and manage its apps here.</p>
           <span className="mt-3 rounded-full border border-white/[0.08] bg-white/[0.035] px-2.5 py-1 text-[8px] uppercase tracking-[0.12em] text-[#969D95]">Coming with Phone Companion</span>
         </div>
       ) : (

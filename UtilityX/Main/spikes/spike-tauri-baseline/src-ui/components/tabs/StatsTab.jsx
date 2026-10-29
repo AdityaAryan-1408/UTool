@@ -108,7 +108,7 @@ export default function StatsTab({ accent }) {
 
       <div className="grid grid-cols-3 gap-2.5 shrink-0">
         <Gauge value={stats?.cpuPercent} color={accentColor} icon={Cpu} label="CPU" valueLabel={stats ? `${Math.round(stats.cpuPercent)}%` : '—'} subtitle="Total processor load" unavailable={!stats} />
-        <Gauge value={stats?.memoryPercent} color="#53c9ee" icon={MemoryStick} label="Memory" valueLabel={stats ? `${Math.round(stats.memoryPercent)}%` : '—'} subtitle={stats ? `${formatBytes(stats.memoryUsedBytes)} / ${formatBytes(stats.memoryTotalBytes)}` : 'Waiting for system data'} unavailable={!stats} />
+        <Gauge value={stats?.memoryPercent} color={accentColor} icon={MemoryStick} label="Memory" valueLabel={stats ? `${Math.round(stats.memoryPercent)}%` : '—'} subtitle={stats ? `${formatBytes(stats.memoryUsedBytes)} / ${formatBytes(stats.memoryTotalBytes)}` : 'Waiting for system data'} unavailable={!stats} />
         <Gauge value={stats?.gpuPercent} color="#72d6a2" icon={Activity} label="GPU · 3D" valueLabel={stats?.gpuPercent == null ? 'N/A' : `${Math.round(stats.gpuPercent)}%`} subtitle={stats?.gpuPercent == null ? 'Windows GPU counter unavailable' : 'Highest active 3D engine'} unavailable={stats?.gpuPercent == null} />
       </div>
 

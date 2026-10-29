@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { getNotchGreeting } from '../utils/notchGreeting';
 import { invokeTauriStrict } from '../utils/tauriBridge';
+import { THEMES, readPreference, writePreference } from '../utils/ollumi';
 
 const HOVER_OPTIONS = [
   { id: 'cpu', label: 'Processor', detail: 'Current CPU load', sample: 'CPU 8%', icon: Settings2 },
@@ -15,14 +16,10 @@ const HOVER_OPTIONS = [
   { id: 'clock', label: 'Local time', detail: 'A small glance at the time', sample: '10:42', icon: Clock3 },
 ];
 
-const THEMES = [
-  { id: 'neon', label: 'Neon white', color: '#F5F7FF', note: 'AMOLED black with a white glow' },
-];
-
 const SECTIONS = [
   { id: 'hover', label: 'Hover card', icon: SlidersHorizontal, title: 'Hover card', desc: 'Choose what appears beside the notch.' },
-  { id: 'appearance', label: 'Appearance', icon: Palette, title: 'Appearance', desc: 'Pure black surfaces with a restrained white highlight.' },
-  { id: 'behavior', label: 'Behavior', icon: Monitor, title: 'Behavior', desc: 'Set how WinUtilX behaves around your work.' },
+  { id: 'appearance', label: 'Appearance', icon: Palette, title: 'Appearance', desc: 'Choose an accent and panel surface.' },
+  { id: 'behavior', label: 'Behavior', icon: Monitor, title: 'Behavior', desc: 'Set how Ollumi behaves around your work.' },
   { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard, title: 'Shortcuts', desc: 'Quick access without reaching for the mouse.' },
   { id: 'profile', label: 'Greeting', icon: UserRound, title: 'Your greeting', desc: 'Choose the name shown in your notch greeting.' },
   { id: 'ai', label: 'AI & API Keys', icon: KeyRound, title: 'AI & API Keys', desc: 'Configure the provider used by Circle Search.' },
@@ -50,23 +47,37 @@ export default function SettingsModal({
   onThemeChange = () => {},
   hoverDetails = ['cpu', 'memory'],
   onHoverDetailsChange = () => {},
-  displayName = 'Aditya',
+  displayName = '',
   onDisplayNameChange = () => {},
+  surfaceMode = 'amoled',
+  onSurfaceModeChange = () => {},
   onReset = () => {},
   initialSection = 'hover',
 }) {
   const [section, setSection] = useState('hover');
-  const [autohide, setAutohide] = useState(true);
-  const [startup, setStartup] = useState(true);
-  const [sounds, setSounds] = useState(false);
+  const [autohide, setAutohide] = useState(() => {
+    return readPreference('ollumi-hide-fullscreen', ['winutilx-hide-fullscreen'], 'true') !== 'false';
+  });
+  const [behaviorMessage, setBehaviorMessage] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [apiConfigured, setApiConfigured] = useState(false);
   const [apiBusy, setApiBusy] = useState(false);
   const [apiMessage, setApiMessage] = useState('');
   const selected = Array.isArray(hoverDetails) ? hoverDetails : ['cpu', 'memory'];
   const sectionInfo = SECTIONS.find((item) => item.id === section) || SECTIONS[0];
-  const activeColor = THEMES.find((item) => item.id === theme)?.color || '#F5F7FF';
-  const greetingPreview = getNotchGreeting(displayName.trim() || 'Aditya');
+  const activeColor = THEMES.find((item) => item.id === theme)?.color || THEMES[0].color;
+  const greetingPreview = getNotchGreeting(displayName);
+
+  const setFullscreenAutohide = async (enabled) => {
+    setAutohide(enabled);
+    setBehaviorMessage('');
+    writePreference('ollumi-hide-fullscreen', String(enabled));
+    try {
+      await invokeTauriStrict('set_fullscreen_autohide', { enabled });
+    } catch (error) {
+      setBehaviorMessage(`Could not update full-screen hiding: ${error?.message || error}`);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -139,7 +150,7 @@ export default function SettingsModal({
                 </span>
                 <span>
                   <span className="block text-[12px] font-semibold tracking-[-0.02em] text-[#F0F1EB]">Preferences</span>
-                  <span className="mt-0.5 block text-[10px] text-[#858C86]">WinUtilX</span>
+                  <span className="mt-0.5 block text-[10px] text-[#858C86]">Ollumi</span>
                 </span>
               </div>
 
@@ -158,7 +169,7 @@ export default function SettingsModal({
 
               <div className="mt-auto space-y-3 border-t border-white/[0.07] pt-3">
                 <p className="px-1 text-[9px] leading-4 text-[#737B74]">Changes save as you make them.</p>
-                <button type="button" onClick={() => { setAutohide(true); setStartup(true); setSounds(false); onReset(); }} className="flex items-center gap-2 px-1 text-[10px] font-medium text-[#9AA199] transition-colors hover:text-[#E3E6DE]">
+                <button type="button" onClick={() => { void setFullscreenAutohide(true); onReset(); }} className="flex items-center gap-2 px-1 text-[10px] font-medium text-[#9AA199] transition-colors hover:text-[#E3E6DE]">
                   <RotateCcw className="h-3 w-3" />Reset preferences
                 </button>
               </div>
@@ -190,7 +201,7 @@ export default function SettingsModal({
                     <div className="mt-2.5 flex h-10 items-center justify-center rounded-[12px] border border-white/[0.08] bg-[#060606]">
                       <div className="flex h-8 items-center gap-2 rounded-full border border-white/[0.08] bg-[#0C0C0C] px-3">
                         <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: activeColor }} />
-                        <span className="text-[10px] font-semibold text-[#E7E9E2]">WinUtilX</span>
+                        <span className="text-[10px] font-semibold text-[#E7E9E2]">Ollumi</span>
                         <span className="mx-0.5 h-3 w-px bg-white/[0.12]" />
                         {selected.length ? selected.map((id) => {
                           const item = HOVER_OPTIONS.find((option) => option.id === id);
@@ -220,13 +231,13 @@ export default function SettingsModal({
                 {section === 'appearance' && (
                   <motion.div key="appearance" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
                     <p className="text-[11px] font-medium text-[#E3E6DF]">Accent color</p>
-                    <p className="mt-1 text-[9px] text-[#899189]">Applied to active controls and small status details.</p>
+                    <p className="mt-1 text-[9px] text-[#899189]">Choose a color for active controls and status details.</p>
                     <div className="mt-3 grid grid-cols-1 gap-2">
                       {THEMES.map((item) => {
                         const active = theme === item.id;
                         return (
                           <button key={item.id} type="button" onClick={() => onThemeChange(item.id)} className={`flex items-center gap-3 rounded-[12px] border p-2.5 text-left transition-all ${active ? 'border-white/[0.16] bg-white/[0.055]' : 'border-white/[0.06] bg-white/[0.018] hover:bg-white/[0.045]'}`}>
-                            <span className="h-7 w-7 shrink-0 rounded-full border border-white/[0.12]" style={{ background: item.color }} />
+                            <span className="h-7 w-7 shrink-0 rounded-full border border-white/[0.12]" style={{ background: item.color, boxShadow: active ? `0 0 18px ${item.glow}` : undefined }} />
                             <span className="min-w-0 flex-1"><span className="block text-[10px] font-medium text-[#E2E5DE]">{item.label}</span><span className="mt-0.5 block text-[9px] text-[#828A82]">{item.note}</span></span>
                             {active && <Check className="h-3.5 w-3.5 shrink-0" style={{ color: activeColor }} />}
                           </button>
@@ -235,27 +246,33 @@ export default function SettingsModal({
                     </div>
                     <div className="mt-3 rounded-[11px] border border-white/[0.06] bg-white/[0.02] px-3 py-2">
                       <p className="text-[10px] font-medium text-[#DDE0D9]">Type and contrast</p>
-                      <p className="mt-1 text-[9px] leading-4 text-[#858D85]">WinUtilX uses the system interface font with softened contrast for a calmer, more legible panel.</p>
+                      <p className="mt-1 text-[9px] leading-4 text-[#858D85]">Ollumi uses the system interface font with softened contrast for a calmer, more legible panel.</p>
+                    </div>
+                    <p className="mt-3 text-[11px] font-medium text-[#E3E6DF]">Panel surface</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {[{ id: 'amoled', label: 'AMOLED', note: 'Pure black' }, { id: 'glass', label: 'Frosted glass', note: 'Translucent blur' }].map((item) => (
+                        <button key={item.id} type="button" onClick={() => onSurfaceModeChange(item.id)} aria-pressed={surfaceMode === item.id} className={`rounded-[11px] border px-3 py-2 text-left ${surfaceMode === item.id ? 'border-white/20 bg-white/[0.08]' : 'border-white/[0.06] bg-white/[0.02]'}`}>
+                          <span className="block text-[10px] font-medium text-[#E2E5DE]">{item.label}</span><span className="mt-0.5 block text-[9px] text-[#828A82]">{item.note}</span>
+                        </button>
+                      ))}
                     </div>
                   </motion.div>
                 )}
 
                 {section === 'behavior' && (
                   <motion.div key="behavior" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
-                    <ToggleRow title="Hide in full-screen apps" description="Keep the notch out of the way while games or video are full screen." value={autohide} onChange={setAutohide} />
-                    <ToggleRow title="Start with Windows" description="Open WinUtilX quietly when you sign in." value={startup} onChange={setStartup} />
-                    <ToggleRow title="Subtle interface sounds" description="Play a soft sound when switching between sections." value={sounds} onChange={setSounds} />
+                    <ToggleRow title="Hide in full-screen apps" description="Hide when a foreground window covers the notch's monitor; restore when you leave it." value={autohide} onChange={setFullscreenAutohide} />
+                    {behaviorMessage && <p role="status" className="mt-2 text-[9px] text-rose-300">{behaviorMessage}</p>}
                   </motion.div>
                 )}
 
                 {section === 'shortcuts' && (
                   <motion.div key="shortcuts" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
                     {[
-                      { title: 'Toggle notch visibility', description: 'Show or hide the notch', keys: ['Alt', '\\'] },
-                      { title: 'Toggle notch visibility', description: 'Alternate visibility shortcut', keys: ['Ctrl', 'Shift', 'H'] },
-                      { title: 'Circle snip', description: 'Select an area of the screen', keys: ['Ctrl', 'Shift', 'S'] },
-                      { title: 'Screen capture', description: 'Select a region and add it to Shelf temporarily · Ctrl+Alt+X alternate', keys: ['Ctrl', 'Shift', 'X'] },
-                      { title: 'Dictation', description: 'Open voice input', keys: ['Ctrl', 'Win'] },
+                      { title: 'Toggle notch visibility', description: 'Show or hide the notch', keys: ['Ctrl', 'Shift', 'H'] },
+                      { title: 'Circle Search', description: 'Select an area of the screen', keys: ['Ctrl', 'Shift', 'S'] },
+                      { title: 'Screen capture', description: 'Select a region and add it to Shelf temporarily', keys: ['Ctrl', 'Alt', 'X'] },
+                      { title: 'Batch paste', description: 'Paste copied items oldest to newest', keys: ['Ctrl', 'Shift', 'V'] },
                     ].map((item, index) => (
                       <div key={index} className="flex items-center justify-between gap-3 border-b border-white/[0.06] py-3">
                         <span><span className="block text-[11px] font-medium text-[#E4E6E0]">{item.title}</span><span className="mt-0.5 block text-[9px] text-[#858D85]">{item.description}</span></span>
@@ -275,7 +292,7 @@ export default function SettingsModal({
                       value={displayName}
                       maxLength={24}
                       onChange={(event) => onDisplayNameChange(event.target.value)}
-                      onBlur={() => onDisplayNameChange(displayName.trim() || 'Aditya')}
+                      onBlur={() => onDisplayNameChange(displayName.trim())}
                       placeholder="Your name"
                       className="mt-3 w-full rounded-[11px] border border-white/[0.09] bg-white/[0.035] px-3 py-2.5 text-[11px] text-[#E8E9E3] outline-none transition focus:border-white/25"
                     />
@@ -289,7 +306,7 @@ export default function SettingsModal({
                 {section === 'ai' && (
                   <motion.div key="ai" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
                     <p className="text-[11px] font-medium text-[#E3E6DF]">Groq API key</p>
-                    <p className="mt-1 text-[9px] leading-4 text-[#899189]">Used by Circle Search with Groq’s Qwen vision model. UtilityX stores the key encrypted for your Windows account and sends requests directly to Groq.</p>
+                    <p className="mt-1 text-[9px] leading-4 text-[#899189]">Used by Circle Search with Groq’s Qwen vision model. Ollumi stores the key encrypted for your Windows account and sends requests directly to Groq.</p>
                     <div className="mt-3 flex items-center justify-between rounded-[11px] border border-white/[0.06] bg-white/[0.02] px-3 py-2">
                       <span className="text-[10px] text-[#C5CBC3]">{apiConfigured ? 'A key is saved on this PC' : 'No Groq API key saved'}</span>
                       <span className={`h-1.5 w-1.5 rounded-full ${apiConfigured ? 'bg-emerald-400' : 'bg-white/25'}`} />
@@ -312,11 +329,11 @@ export default function SettingsModal({
                     </div>
                     {apiMessage && <p role="status" className="mt-2 rounded-[9px] border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[9px] leading-4 text-[#BAC1B8]">{apiMessage}</p>}
                     <button type="button" onClick={() => invokeTauriStrict('open_external_url', { url: 'https://console.groq.com/keys' }).catch((error) => setApiMessage(String(error?.message || error)))} className="mt-3 text-[10px] font-medium text-[#D1D6CE] underline decoration-white/25 underline-offset-2 hover:text-white">Get a Groq API key</button>
-                    <p className="mt-3 text-[9px] leading-4 text-[#737B74]">Circle Search sends only the selected crop and your question to Groq after you ask. The screenshot is not saved by UtilityX.</p>
+                    <p className="mt-3 text-[9px] leading-4 text-[#737B74]">Circle Search sends only the selected crop and your question to Groq after you ask. The screenshot is not saved by Ollumi.</p>
                   </motion.div>
                 )}
               </div>
-              <footer className="flex items-center justify-between border-t border-white/[0.07] px-5 py-2"><span className="text-[9px] text-[#788078]">WinUtilX · Desktop utility</span><span className="text-[9px] text-[#788078]">Preferences save automatically</span></footer>
+              <footer className="flex items-center justify-between border-t border-white/[0.07] px-5 py-2"><span className="text-[9px] text-[#788078]">Ollumi · Desktop companion</span><span className="text-[9px] text-[#788078]">Preferences save automatically</span></footer>
             </div>
           </motion.section>
         </motion.div>

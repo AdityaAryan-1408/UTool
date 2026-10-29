@@ -55,7 +55,7 @@ export default function PowerTab({ onCollapse, accent }) {
     try {
       await invokeTauriStrict('quit_utilityx');
     } catch (error) {
-      setStatusMsg(error?.message || 'Could not quit UtilityX.');
+      setStatusMsg(error?.message || 'Could not quit Ollumi.');
       setWorkingAction('');
     }
   };
@@ -64,7 +64,7 @@ export default function PowerTab({ onCollapse, accent }) {
     sleep: { title: 'Sleep this PC?', description: 'Your Windows session will remain open and can be resumed when you wake the PC.', confirm: 'Sleep', tone: 'blue' },
     restart: { title: 'Restart Windows?', description: 'Save your work first. Windows will close open applications as part of restarting.', confirm: 'Restart', tone: 'purple' },
     shutdown: { title: 'Shut down Windows?', description: 'Save your work first. Windows will close open applications as part of shutting down.', confirm: 'Shut down', tone: 'rose' },
-    quit: { title: 'Quit UtilityX?', description: 'UtilityX will close completely. You can start it again whenever you need it.', confirm: 'Quit UtilityX', tone: 'neutral' },
+    quit: { title: 'Quit Ollumi?', description: 'Ollumi will close completely. You can start it again whenever you need it.', confirm: 'Quit Ollumi', tone: 'neutral' },
   };
 
   const askToConfirm = (action) => setConfirmAction({ action, ...confirmationCopy[action] });
@@ -112,7 +112,7 @@ export default function PowerTab({ onCollapse, accent }) {
     },
     {
       id: 'quit',
-      title: 'Quit UtilityX',
+      title: 'Quit Ollumi',
       sub: 'Close the app',
       icon: LogOut,
       action: () => askToConfirm('quit'),
@@ -124,7 +124,7 @@ export default function PowerTab({ onCollapse, accent }) {
     <div className="relative flex h-full min-h-0 flex-col items-center gap-2 overflow-hidden py-1">
       <div className="shrink-0 text-center">
         <h3 className="text-sm font-bold tracking-wide text-white">System Power Options</h3>
-        <p className="mt-0.5 text-xs text-slate-400">Control your Windows session or quit UtilityX</p>
+        <p className="mt-0.5 text-xs text-slate-400">Control your Windows session or quit Ollumi</p>
       </div>
 
       <div className="grid w-full max-w-4xl shrink-0 grid-cols-5 gap-3">

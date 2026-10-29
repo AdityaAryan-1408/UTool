@@ -171,23 +171,28 @@ fn scan_installed_apps() -> Result<Vec<InstalledApp>, String> {
     serde_json::from_str(json.trim()).map_err(|error| format!("Windows returned an invalid installed-app list: {error}"))
 }
 
-#[tauri::command]
-pub fn apps_list_installed() -> Result<Vec<InstalledApp>, String> {
+fn cached_or_scan_installed_apps(refresh: bool) -> Result<Vec<InstalledApp>, String> {
     let cache = INSTALLED_APPS_CACHE.get_or_init(|| std::sync::Mutex::new(None));
-    let mut guard = cache.lock().map_err(|_| "The installed-app cache is unavailable.".to_string())?;
-    if let Some(apps) = guard.as_ref() { return Ok(apps.clone()); }
+    if !refresh {
+        let guard = cache.lock().map_err(|_| "The installed-app cache is unavailable.".to_string())?;
+        if let Some(apps) = guard.as_ref() { return Ok(apps.clone()); }
+    }
     let apps = scan_installed_apps()?;
+    let mut guard = cache.lock().map_err(|_| "The installed-app cache is unavailable.".to_string())?;
     *guard = Some(apps.clone());
     Ok(apps)
 }
 
 #[tauri::command]
-pub fn apps_refresh_installed() -> Result<Vec<InstalledApp>, String> {
-    let apps = scan_installed_apps()?;
-    let cache = INSTALLED_APPS_CACHE.get_or_init(|| std::sync::Mutex::new(None));
-    let mut guard = cache.lock().map_err(|_| "The installed-app cache is unavailable.".to_string())?;
-    *guard = Some(apps.clone());
-    Ok(apps)
+pub async fn apps_list_installed() -> Result<Vec<InstalledApp>, String> {
+    tauri::async_runtime::spawn_blocking(|| cached_or_scan_installed_apps(false))
+        .await.map_err(|error| format!("The installed-app scan stopped: {error}"))?
+}
+
+#[tauri::command]
+pub async fn apps_refresh_installed() -> Result<Vec<InstalledApp>, String> {
+    tauri::async_runtime::spawn_blocking(|| cached_or_scan_installed_apps(true))
+        .await.map_err(|error| format!("The installed-app refresh stopped: {error}"))?
 }
 
 fn wide(value: &str) -> Vec<u16> {

@@ -66,7 +66,7 @@ struct SpeedTestSession {
 
 impl SpeedTestSession {
     fn open() -> Result<Self, String> {
-        let agent: Vec<u16> = "UtilityX Network Speed Test".encode_utf16().chain(Some(0)).collect();
+        let agent: Vec<u16> = "Ollumi Network Speed Test".encode_utf16().chain(Some(0)).collect();
         let host: Vec<u16> = SPEED_TEST_HOST.encode_utf16().chain(Some(0)).collect();
         unsafe {
             let session = WinHttpOpen(agent.as_ptr(), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, null_mut(), null_mut(), 0);
@@ -238,6 +238,7 @@ struct NetworkSample { received: u64, sent: u64, at: Option<Instant> }
 static LAST_CPU: Mutex<Option<CpuSample>> = Mutex::new(None);
 static LAST_NETWORK: Mutex<NetworkSample> = Mutex::new(NetworkSample { received: 0, sent: 0, at: None });
 static LAST_PROCESS_TIMES: Mutex<Option<HashMap<u32, u64>>> = Mutex::new(None);
+static LAST_SYSTEM_CPU_TIME: Mutex<Option<u64>> = Mutex::new(None);
 static GPU_COUNTER: OnceLock<Option<(isize, isize)>> = OnceLock::new();
 
 fn sample_gpu() -> Option<f64> {
@@ -390,12 +391,18 @@ fn process_stats() -> (usize, Vec<ProcessStat>) {
         }
         let count = (bytes_needed as usize / std::mem::size_of::<u32>()).min(pids.len());
         pids.truncate(count);
-        let system_delta = {
+        let system_total = {
             let mut idle: FILETIME = zeroed();
             let mut kernel: FILETIME = zeroed();
             let mut user: FILETIME = zeroed();
-            if GetSystemTimes(&mut idle, &mut kernel, &mut user) != 0 { filetime_value(kernel).saturating_add(filetime_value(user)) } else { 0 }
+            if GetSystemTimes(&mut idle, &mut kernel, &mut user) != 0 {
+                Some(filetime_value(kernel).saturating_add(filetime_value(user)))
+            } else { None }
         };
+        let system_delta = system_total.and_then(|current| LAST_SYSTEM_CPU_TIME.lock().ok().map(|mut previous| {
+            let old = previous.replace(current);
+            old.map(|old| current.saturating_sub(old)).unwrap_or(0)
+        })).unwrap_or(0);
         let mut current_times = HashMap::with_capacity(count);
         let mut processes = Vec::new();
         for pid in pids.iter().copied().filter(|pid| *pid != 0) {

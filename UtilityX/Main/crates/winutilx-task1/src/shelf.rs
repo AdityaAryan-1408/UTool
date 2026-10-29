@@ -19,7 +19,7 @@ static SHELF_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 static EXPIRY_TASK_READY: AtomicBool = AtomicBool::new(false);
 
 fn shelf_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_data_dir().map_err(|error| format!("Could not locate UtilityX app data: {error}"))?.join("shelf");
+    let dir = app.path().app_data_dir().map_err(|error| format!("Could not locate Ollumi app data: {error}"))?.join("shelf");
     std::fs::create_dir_all(&dir).map_err(|error| format!("Could not create the Shelf storage folder: {error}"))?;
     Ok(dir)
 }
@@ -67,7 +67,7 @@ fn cleanup_expired_in(dir: &Path) -> Result<usize, String> {
 
 fn ensure_expiry_task(shelf_path: &Path) -> Result<(), String> {
     if EXPIRY_TASK_READY.load(Ordering::Acquire) { return Ok(()); }
-    let executable = std::env::current_exe().map_err(|error| format!("Could not locate UtilityX for expiry scheduling: {error}"))?;
+    let executable = std::env::current_exe().map_err(|error| format!("Could not locate Ollumi for expiry scheduling: {error}"))?;
     let action = format!("\"{}\" --utilityx-shelf-cleanup \"{}\"", executable.display(), shelf_path.display());
     let result = Command::new("schtasks.exe")
         .args(["/Create", "/F", "/SC", "MINUTE", "/MO", "10", "/TN", SHELF_CLEANUP_TASK, "/TR", &action])

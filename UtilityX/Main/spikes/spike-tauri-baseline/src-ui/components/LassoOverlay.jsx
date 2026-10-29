@@ -3,23 +3,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUpRight, Bookmark, Copy, ExternalLink, KeyRound, Loader2, Search, Sparkles, X } from 'lucide-react';
 import { invokeTauriStrict } from '../utils/tauriBridge';
 
-function cropCapture(capture, bounds) {
-  const binary = atob(capture.bgraBase64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-
+async function cropCapture(capture, bounds) {
+  if (!capture?.bitmapDataUrl || !capture.width || !capture.height) {
+    throw new Error('Windows did not return a usable screen capture.');
+  }
+  const screenImage = new Image();
+  screenImage.src = capture.bitmapDataUrl;
+  await screenImage.decode();
   const screen = document.createElement('canvas');
   screen.width = capture.width;
   screen.height = capture.height;
   const screenContext = screen.getContext('2d', { willReadFrequently: true });
-  const frame = screenContext.createImageData(capture.width, capture.height);
-  for (let index = 0; index < bytes.length; index += 4) {
-    frame.data[index] = bytes[index + 2];
-    frame.data[index + 1] = bytes[index + 1];
-    frame.data[index + 2] = bytes[index];
-    frame.data[index + 3] = 255;
-  }
-  screenContext.putImageData(frame, 0, 0);
+  if (!screenContext) throw new Error('Could not prepare the selected image.');
+  screenContext.drawImage(screenImage, 0, 0, capture.width, capture.height);
 
   const scaleX = capture.width / window.innerWidth;
   const scaleY = capture.height / window.innerHeight;
@@ -227,7 +223,7 @@ export default function LassoOverlay({ isOpen, onClose, onOpenSettings }) {
       if (!hasKey) { setPhase('no-key'); return; }
       setPhase('capturing');
       const captured = await invokeTauriStrict('capture_screen');
-      const image = cropCapture(captured, bounds);
+      const image = await cropCapture(captured, bounds);
       setSelectionImage(image);
       setPhase('result');
       await askGroq('', image);

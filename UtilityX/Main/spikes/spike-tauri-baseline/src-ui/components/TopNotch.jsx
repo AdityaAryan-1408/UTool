@@ -26,6 +26,7 @@ import WallpaperTab from './tabs/WallpaperTab';
 import PowerTab from './tabs/PowerTab';
 import { invokeTauri, invokeTauriStrict } from '../utils/tauriBridge';
 import { getNotchGreeting } from '../utils/notchGreeting';
+import { THEMES, readPreference, writePreference, listenOllumiEvent, dispatchOllumiEvent } from '../utils/ollumi';
 
 // Apple-calibrated fluid cubic bezier curve: silky-smooth deceleration
 const TRANSITION_CONFIG = {
@@ -38,25 +39,12 @@ const TRANSITION_CONFIG = {
 const TAB_HEIGHTS = {
   controls: 490,
   shelf: 430,     // Staged cards and drop zone
-  today: 490,
+  today: 560,
   stats: 450,
   clipboard: 460,
   apps: 470,
   wallpaper: 640,
   power: 400,
-};
-
-const THEME_ACCENTS = {
-  neon: {
-    name: 'Neon white',
-    primary: '#F5F7FF',
-    primaryLight: '#FFFFFF',
-    primaryDark: '#C9CED8',
-    rgb: '245, 247, 255',
-    bgAlpha: 'rgba(255, 255, 255, 0.10)',
-    borderAlpha: 'rgba(255, 255, 255, 0.24)',
-    activeText: '#000000',
-  },
 };
 
 const TABS = [
@@ -75,15 +63,19 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
   const [stage, setStage] = useState('idle');
   const [activeTab, setActiveTab] = useState('today');
   const [displayName, setDisplayName] = useState(() => {
-    try { return localStorage.getItem('winutilx-display-name') || 'Aditya'; } catch { return 'Aditya'; }
+    return readPreference('ollumi-display-name', ['winutilx-display-name'], '');
   });
   const [recentClipboardQueue, setRecentClipboardQueue] = useState([]);
   const [clipboardQueueUntil, setClipboardQueueUntil] = useState(0);
   const [queueClock, setQueueClock] = useState(Date.now());
-  const [accentTheme, setAccentTheme] = useState('neon');
+  const [accentTheme, setAccentTheme] = useState(() => {
+    const saved = readPreference('ollumi-accent-theme', ['winutilx-accent-theme'], 'neon-white');
+    return saved === 'neon' ? 'neon-white' : saved;
+  });
+  const [surfaceMode, setSurfaceMode] = useState(() => readPreference('ollumi-surface-mode', [], 'amoled'));
   const [hoverDetails, setHoverDetails] = useState(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem('winutilx-hover-details') || '["cpu","memory"]');
+      const saved = JSON.parse(readPreference('ollumi-hover-details', ['winutilx-hover-details'], '["cpu","memory"]'));
       return Array.isArray(saved) ? saved.slice(0, 3) : ['cpu', 'memory'];
     } catch { return ['cpu', 'memory']; }
   });
@@ -103,10 +95,10 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
     };
     const handleClipboardUpdate = () => refreshQueue(true);
     refreshQueue();
-    window.addEventListener('utilityx-clipboard-history-updated', handleClipboardUpdate);
+    const unlisten = listenOllumiEvent('ollumi-clipboard-history-updated', handleClipboardUpdate);
     const timer = window.setInterval(() => setQueueClock(Date.now()), 1000);
     return () => {
-      window.removeEventListener('utilityx-clipboard-history-updated', handleClipboardUpdate);
+      unlisten();
       window.clearInterval(timer);
     };
   }, []);
@@ -116,8 +108,7 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
       setActiveTab('shelf');
       setStage('full');
     };
-    window.addEventListener('utilityx-screenshot-added', openShelfForScreenshot);
-    return () => window.removeEventListener('utilityx-screenshot-added', openShelfForScreenshot);
+    return listenOllumiEvent('ollumi-screenshot-added', openShelfForScreenshot);
   }, []);
 
   useEffect(() => {
@@ -128,8 +119,7 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
     const restoreClipboardFocusMode = () => {
       invokeTauri('set_clipboard_focus_mode', { enabled: activeTab === 'clipboard' });
     };
-    window.addEventListener('utilityx-screen-capture-closed', restoreClipboardFocusMode);
-    return () => window.removeEventListener('utilityx-screen-capture-closed', restoreClipboardFocusMode);
+    return listenOllumiEvent('ollumi-screen-capture-closed', restoreClipboardFocusMode);
   }, [activeTab]);
 
   useEffect(() => {
@@ -137,8 +127,7 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
       setActiveTab('shelf');
       setStage('full');
     };
-    window.addEventListener('utilityx-shelf-drag-enter', openShelfForDrop);
-    return () => window.removeEventListener('utilityx-shelf-drag-enter', openShelfForDrop);
+    return listenOllumiEvent('ollumi-shelf-drag-enter', openShelfForDrop);
   }, []);
 
   useEffect(() => {
@@ -148,10 +137,10 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
       try {
         const count = await invokeTauriStrict('shelf_import_clipboard_files');
         if (count > 0) {
-          window.dispatchEvent(new CustomEvent('utilityx-shelf-files-dropped', { detail: { count } }));
+          dispatchOllumiEvent('ollumi-shelf-files-dropped', { count });
         }
       } catch (error) {
-        window.dispatchEvent(new CustomEvent('utilityx-shelf-drop-error', { detail: error?.message || String(error) }));
+        dispatchOllumiEvent('ollumi-shelf-drop-error', error?.message || String(error));
       }
     };
     window.addEventListener('keydown', importClipboardFiles);
@@ -166,10 +155,19 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
     is_plugged: false,
   });
 
-  const resolvedAccent = THEME_ACCENTS.neon;
-  const accent = resolvedAccent;
-  const accentColor = resolvedAccent.primary;
-  const activeTextColor = resolvedAccent.activeText;
+  const selectedTheme = THEMES.find((item) => item.id === accentTheme) || THEMES[0];
+  const accentColor = selectedTheme.color;
+  const accent = {
+    name: selectedTheme.label,
+    primary: selectedTheme.color,
+    primaryLight: selectedTheme.color,
+    primaryDark: selectedTheme.color,
+    rgb: selectedTheme.color.match(/[\da-f]{2}/gi)?.slice(0, 3).map((part) => parseInt(part, 16)).join(', ') || '245, 247, 255',
+    bgAlpha: selectedTheme.muted,
+    borderAlpha: selectedTheme.glow,
+    activeText: accentTheme === 'violet-aurora' ? '#FFFFFF' : '#000000',
+  };
+  const activeTextColor = accent.activeText;
   const hoverMetricValues = {
     cpu: `CPU ${telemetry.cpu_percent}%`,
     memory: `MEM ${telemetry.ram_mb} MB`,
@@ -179,21 +177,26 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
   };
   const notchGreeting = getNotchGreeting(displayName);
   const greetingWidth = Math.min(460, Math.max(270, 170 + notchGreeting.text.length * 5.5));
-  const hoveredWidth = Math.min(444, 270 + hoverDetails.length * 58);
+  // Reserve room for the longest clock value plus the Open affordance.
+  const hoveredWidth = Math.min(492, 318 + hoverDetails.length * 58);
   const clipboardQueueVisible = clipboardQueueUntil > queueClock && recentClipboardQueue.length > 0;
   const newestClipboardItem = recentClipboardQueue[recentClipboardQueue.length - 1];
 
   useEffect(() => {
-    try { localStorage.setItem('winutilx-accent-theme', accentTheme); } catch {}
+    writePreference('ollumi-accent-theme', accentTheme);
   }, [accentTheme]);
 
   useEffect(() => {
-    try { localStorage.setItem('winutilx-hover-details', JSON.stringify(hoverDetails)); } catch {}
+    writePreference('ollumi-hover-details', JSON.stringify(hoverDetails));
   }, [hoverDetails]);
 
   useEffect(() => {
-    try { localStorage.setItem('winutilx-display-name', displayName.trim() || 'Aditya'); } catch {}
+    writePreference('ollumi-display-name', displayName.trim());
   }, [displayName]);
+
+  useEffect(() => {
+    writePreference('ollumi-surface-mode', surfaceMode);
+  }, [surfaceMode]);
 
   useEffect(() => {
     const fetchTelemetry = async () => {
@@ -236,11 +239,10 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
     updateNativeNotchRegion(stage);
   }, [stage, activeTab, isSettingsOpen, hoverDetails, greetingWidth]);
 
-  // Global hotkeys to toggle notch visibility (Alt+\ and Ctrl+Shift+H)
+  // Ctrl+Shift+H is the global hide/show shortcut registered by the native app.
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Alt + \ or Ctrl + Shift + H to toggle visibility
-      if ((e.altKey && e.key === '\\') || (e.ctrlKey && e.shiftKey && (e.key === 'H' || e.key === 'h'))) {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'H' || e.key === 'h')) {
         e.preventDefault();
         setIsNotchHidden((prev) => {
           const next = !prev;
@@ -306,10 +308,10 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
             invokeTauri('toggle_notch_visibility');
           }}
           className="mt-2 px-3.5 py-1 rounded-full bg-[#000000]/95 border border-[#F5F7FF]/25 text-[10px] text-[#F5F7FF] pointer-events-auto shadow-lg flex items-center gap-2 cursor-pointer hover:bg-[#111111] transition-colors"
-          title="Click to restore notch, or press Alt+\ / Ctrl+Shift+H"
+          title="Click to restore notch, or press Ctrl+Shift+H"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-[#F5F7FF]" />
-          <span>Notch hidden · Press <kbd className="bg-white/10 px-1 py-0.5 rounded text-white">Alt+\</kbd> or <kbd className="bg-white/10 px-1 py-0.5 rounded text-white">Ctrl+Shift+H</kbd> to restore</span>
+          <span>Notch hidden · Press <kbd className="bg-white/10 px-1 py-0.5 rounded text-white">Ctrl+Shift+H</kbd> to restore</span>
         </motion.div>
       </div>
     );
@@ -328,8 +330,13 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
         transition={TRANSITION_CONFIG}
         style={{
           transformOrigin: "top center",
-          backgroundColor: '#000000',
-          background: 'linear-gradient(180deg, #000000 0%, #000000 100%)',
+          backgroundColor: surfaceMode === 'glass' ? 'rgba(8, 8, 8, 0.82)' : '#000000',
+          background: surfaceMode === 'glass' ? 'rgba(8, 8, 8, 0.82)' : 'linear-gradient(180deg, #000000 0%, #000000 100%)',
+          backdropFilter: surfaceMode === 'glass' ? 'blur(24px) saturate(130%)' : 'none',
+          WebkitBackdropFilter: surfaceMode === 'glass' ? 'blur(24px) saturate(130%)' : 'none',
+          '--ui-white': selectedTheme.color,
+          '--ui-white-soft': selectedTheme.muted,
+          '--ui-white-line': selectedTheme.glow,
           boxShadow: 'none',
         }}
         onMouseEnter={() => {
@@ -362,8 +369,10 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
           style={{
             borderBottomLeftRadius: targetBottomRadius,
             borderBottomRightRadius: targetBottomRadius,
-            backgroundColor: '#000000',
-            background: 'linear-gradient(180deg, #000000 0%, #000000 100%)',
+            backgroundColor: surfaceMode === 'glass' ? 'rgba(8, 8, 8, 0.82)' : '#000000',
+            background: surfaceMode === 'glass' ? 'rgba(8, 8, 8, 0.82)' : 'linear-gradient(180deg, #000000 0%, #000000 100%)',
+            backdropFilter: surfaceMode === 'glass' ? 'blur(24px) saturate(130%)' : 'none',
+            WebkitBackdropFilter: surfaceMode === 'glass' ? 'blur(24px) saturate(130%)' : 'none',
           }}
         >
           {/* ============================================================ */}
@@ -428,6 +437,7 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
             className={`w-full h-full p-5 flex flex-col justify-between pointer-events-auto bg-[#000000] overflow-hidden transition-[opacity,transform] duration-200 ${
               stage === 'full' ? 'opacity-100 pointer-events-auto z-20 translate-y-0' : 'opacity-0 pointer-events-none z-0 -translate-y-1'
             }`}
+            style={{ backgroundColor: surfaceMode === 'glass' ? 'rgba(8, 8, 8, 0.82)' : '#000000', backdropFilter: surfaceMode === 'glass' ? 'blur(24px) saturate(130%)' : 'none', WebkitBackdropFilter: surfaceMode === 'glass' ? 'blur(24px) saturate(130%)' : 'none' }}
           >
             {/* Top Tabs Bar */}
             <div className="flex items-center justify-between pb-2.5 border-b border-white/10 shrink-0">
@@ -518,6 +528,7 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
               {activeTab === 'today' && (
                 <TodayTab 
                   accent={accent}
+                  displayName={displayName}
                   onCollapse={() => changeStage('idle')} 
                 />
               )}
@@ -566,11 +577,13 @@ export default function TopNotch({ onSelectWallpaper, wallpaperIndex = 0, accent
         accent={accent}
         theme={accentTheme}
         onThemeChange={setAccentTheme}
+        surfaceMode={surfaceMode}
+        onSurfaceModeChange={setSurfaceMode}
         hoverDetails={hoverDetails}
         onHoverDetailsChange={setHoverDetails}
         displayName={displayName}
         onDisplayNameChange={setDisplayName}
-        onReset={() => { setAccentTheme('neon'); setHoverDetails(['cpu', 'memory']); setDisplayName('Aditya'); }}
+        onReset={() => { setAccentTheme('neon-white'); setSurfaceMode('amoled'); setHoverDetails(['cpu', 'memory']); setDisplayName(''); }}
         initialSection={settingsInitialSection}
       />
     </div>

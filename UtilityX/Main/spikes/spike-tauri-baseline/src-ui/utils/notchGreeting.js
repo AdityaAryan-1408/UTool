@@ -12,13 +12,15 @@ const GREETINGS = [
   { before: 24, emoji: '🌙', text: 'Time to wind down' },
 ];
 
-export function getNotchGreeting(name = 'Aditya', date = new Date()) {
+export function getNotchGreeting(name = '', date = new Date()) {
   const hour = date.getHours();
   const greeting = GREETINGS.find((item) => hour < item.before) || GREETINGS[0];
-  const safeName = name.trim() || 'Aditya';
-  const text = greeting.text.endsWith('?')
-    ? `${greeting.text.slice(0, -1)}, ${safeName}?`
-    : `${greeting.text}, ${safeName}`;
+  const safeName = typeof name === 'string' ? name.trim() : '';
+  const text = !safeName
+    ? greeting.text
+    : greeting.text.endsWith('?')
+      ? `${greeting.text.slice(0, -1)}, ${safeName}?`
+      : `${greeting.text}, ${safeName}`;
 
   return { emoji: greeting.emoji, text, phrase: greeting.text };
 }

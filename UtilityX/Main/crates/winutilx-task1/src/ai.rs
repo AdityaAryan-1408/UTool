@@ -28,7 +28,7 @@ extern "system" { fn LocalFree(memory: *mut c_void) -> *mut c_void; }
 
 fn key_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     use tauri::Manager;
-    Ok(app.path().app_data_dir().map_err(|error| format!("Could not locate UtilityX app data: {error}"))?.join("ai").join("groq-key.dpapi"))
+    Ok(app.path().app_data_dir().map_err(|error| format!("Could not locate Ollumi app data: {error}"))?.join("ai").join("groq-key.dpapi"))
 }
 
 fn legacy_key_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
@@ -82,7 +82,7 @@ pub fn ai_save_key(app: tauri::AppHandle, api_key: String) -> Result<(), String>
     let key = api_key.trim();
     validate_key(key)?;
     let path = key_path(&app)?;
-    let parent = path.parent().ok_or_else(|| "Could not locate UtilityX AI settings storage.".to_string())?;
+    let parent = path.parent().ok_or_else(|| "Could not locate Ollumi AI settings storage.".to_string())?;
     std::fs::create_dir_all(parent).map_err(|error| format!("Could not prepare encrypted AI settings storage: {error}"))?;
     let encrypted = protect_key(key)?;
     std::fs::write(&path, encrypted).map_err(|error| format!("Could not save the encrypted Groq API key: {error}"))?;
@@ -109,7 +109,7 @@ fn winhttp_error(context: &str) -> String {
 
 fn post_groq(key: &str, body: &Value) -> Result<Value, String> {
     validate_key(key)?;
-    let agent: Vec<u16> = "UtilityX Circle Search".encode_utf16().chain(Some(0)).collect();
+    let agent: Vec<u16> = "Ollumi Circle Search".encode_utf16().chain(Some(0)).collect();
     let host: Vec<u16> = API_HOST.encode_utf16().chain(Some(0)).collect();
     let path: Vec<u16> = "/openai/v1/chat/completions".encode_utf16().chain(Some(0)).collect();
     let version: Vec<u16> = "HTTP/1.1".encode_utf16().chain(Some(0)).collect();
@@ -218,7 +218,7 @@ fn test_key_blocking(app: tauri::AppHandle, api_key: Option<String>) -> Result<S
         Some(key) => key.trim().to_owned(),
         None => read_saved_key(&app)?.ok_or_else(|| "No Groq API key is saved yet.".to_string())?,
     };
-    let response = post_groq_with_retry(&key, &text_request("Reply with exactly: UtilityX connection successful"))?;
+    let response = post_groq_with_retry(&key, &text_request("Reply with exactly: Ollumi connection successful"))?;
     if response.pointer("/choices/0/message/content").and_then(Value::as_str).is_some_and(|text| !text.trim().is_empty()) {
         Ok("Groq API connection successful.".into())
     } else {

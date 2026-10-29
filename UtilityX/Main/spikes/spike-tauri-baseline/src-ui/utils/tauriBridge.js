@@ -20,7 +20,7 @@ export async function invokeTauri(cmd, args = {}) {
 
 export async function invokeTauriStrict(cmd, args = {}) {
   if (typeof window === 'undefined' || !window.__TAURI_INTERNALS__?.invoke) {
-    throw new Error('This control is available in the native UtilityX app.');
+    throw new Error('This control is available in the native Ollumi app.');
   }
   return window.__TAURI_INTERNALS__.invoke(cmd, args);
 }

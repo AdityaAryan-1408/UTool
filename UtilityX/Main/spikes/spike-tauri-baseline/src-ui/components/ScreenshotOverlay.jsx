@@ -33,31 +33,21 @@ async function cropScreen(capture, rect, shape) {
   return new Promise((resolve, reject) => output.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Could not encode the screenshot crop.')), 'image/png'));
 }
 
-export default function ScreenshotOverlay({ onClose, onCaptured }) {
+export default function ScreenshotOverlay({ initialCapture, initialError = '', onClose, onCaptured }) {
   const containerRef = useRef(null);
   const dragRef = useRef(null);
-  const [background, setBackground] = useState('');
-  const [capture, setCapture] = useState(null);
+  const [background, setBackground] = useState(initialCapture?.bitmapDataUrl || '');
+  const [capture, setCapture] = useState(initialCapture || null);
   const [selection, setSelection] = useState(null);
   const [shape, setShape] = useState('rectangle');
-  const [busy, setBusy] = useState(true);
-  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(initialError);
 
   useEffect(() => {
     let cancelled = false;
-    const timeout = window.setTimeout(() => {
-      if (cancelled) return;
-      cancelled = true;
-      onClose();
-    }, 15_000);
-    invokeTauriStrict('capture_screen').then((result) => {
-      if (cancelled) return;
-      setCapture(result);
-      setBackground(result.bitmapDataUrl);
-    }).catch((failure) => {
-      if (!cancelled) setError(String(failure?.message || failure));
-    }).finally(() => { if (!cancelled) setBusy(false); });
-    return () => { cancelled = true; window.clearTimeout(timeout); };
+    invokeTauriStrict('set_fullscreen_overlay', { enabled: true })
+      .catch((failure) => { if (!cancelled) setError(String(failure?.message || failure)); });
+    return () => { cancelled = true; };
   }, []);
 
   const pointFromEvent = (event) => {

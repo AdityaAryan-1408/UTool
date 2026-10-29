@@ -121,7 +121,7 @@ export default function MobileTab({ onCollapse, accent }) {
           </div>
 
           <div className="max-w-xs space-y-2">
-            <h4 className="text-sm font-bold text-white">Scan with WinUtilX Mobile</h4>
+            <h4 className="text-sm font-bold text-white">Scan with Ollumi Mobile</h4>
             <p className="text-xs text-slate-400 leading-relaxed">
               Open the companion app on your Android or iPhone and scan this code to pin the TLS certificate. No Wi-Fi router or internet connection needed.
             </p>

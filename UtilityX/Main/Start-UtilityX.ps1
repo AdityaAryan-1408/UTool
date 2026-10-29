@@ -11,9 +11,10 @@ $statePath = [System.IO.Path]::GetFullPath((Join-Path $mainDir '..\plan\CURRENT-
 
 $launchablePaths = @(
     (Join-Path $mainDir 'WinUtilX.exe'),
+    (Join-Path $mainDir 'Ollumi.exe'),
     $exePath
 )
-$running = Get-Process -Name winutilx-task1,WinUtilX -ErrorAction SilentlyContinue |
+$running = Get-Process -Name winutilx-task1,WinUtilX,Ollumi -ErrorAction SilentlyContinue |
     Where-Object {
         $processPath = $_.Path
         $processPath -and ($launchablePaths | Where-Object { $_ -ieq $processPath })
@@ -55,14 +56,26 @@ $state = Get-Content -LiteralPath $statePath -Raw
 $state = $state -replace '(?m)^- Build status:.*$', "- Build status: successful ($buildTime)."
 $state = $state -replace '(?m)^- Last successful build:.*$', "- Last successful build: $buildTime"
 $state = $state -replace '(?m)^- Executable:.*$', '- Executable: UtilityX/Main/target/debug/winutilx-task1.exe'
-Set-Content -LiteralPath $statePath -Value $state -Encoding utf8
+$stateSaved = $false
+try {
+    Set-Content -LiteralPath $statePath -Value $state -Encoding utf8
+    $stateSaved = $true
+}
+catch {
+    Write-Warning "Build succeeded, but the state note could not be updated at '$statePath': $($_.Exception.Message)"
+}
 
-Write-Host "Built current UtilityX app: $exePath"
-Write-Host "State recorded in: $statePath"
+Write-Host "Built current Ollumi app: $exePath"
+if ($stateSaved) { Write-Host "State recorded in: $statePath" }
 
 if ($BuildOnly) {
     exit 0
 }
 
 $started = Start-Process -FilePath $exePath -WorkingDirectory $mainDir -PassThru
-Write-Host "Started UtilityX from the current build (PID $($started.Id))."
+Start-Sleep -Seconds 2
+$started.Refresh()
+if ($started.HasExited) {
+    throw "Ollumi exited during startup (PID $($started.Id), exit code $($started.ExitCode))."
+}
+Write-Host "Started Ollumi from the current build (PID $($started.Id))."

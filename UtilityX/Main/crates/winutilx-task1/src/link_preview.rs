@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 use std::sync::Mutex;
 use tauri::Manager;
 use windows_sys::Win32::Foundation::GetLastError;
@@ -11,6 +12,11 @@ use windows_sys::Win32::Networking::WinHttp::{
     WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_FLAG_SECURE,
     WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE,
 };
+
+#[link(name = "winhttp")]
+extern "system" {
+    fn WinHttpSetOption(request: *mut c_void, option: u32, buffer: *mut c_void, buffer_length: u32) -> i32;
+}
 
 const MAX_HTML_BYTES: usize = 64 * 1024;
 static CACHE_LOCK: Mutex<()> = Mutex::new(());
@@ -27,7 +33,7 @@ pub struct LinkPreview {
 }
 
 fn cache_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    Ok(app.path().app_data_dir().map_err(|error| format!("Could not locate UtilityX app data: {error}"))?.join("link-previews").join("cache.json"))
+    Ok(app.path().app_data_dir().map_err(|error| format!("Could not locate Ollumi app data: {error}"))?.join("link-previews").join("cache.json"))
 }
 
 fn parse_http_url(raw: &str) -> Result<(bool, String, u16, String, String), String> {
@@ -58,9 +64,56 @@ fn parse_http_url(raw: &str) -> Result<(bool, String, u16, String, String), Stri
     Ok((secure, host, port, path, authority.to_string()))
 }
 
+fn is_public_ipv4(ip: Ipv4Addr) -> bool {
+    let octets = ip.octets();
+    !(ip.is_private() || ip.is_loopback() || ip.is_link_local() || ip.is_broadcast() || ip.is_multicast()
+        || ip.is_unspecified() || octets[0] == 0 || octets[0] >= 240
+        || (octets[0] == 100 && (64..=127).contains(&octets[1]))
+        || (octets[0] == 192 && octets[1] == 0 && octets[2] == 0)
+        || (octets[0] == 192 && octets[1] == 0 && octets[2] == 2)
+        || (octets[0] == 198 && (octets[1] == 18 || octets[1] == 19))
+        || (octets[0] == 198 && octets[1] == 51 && octets[2] == 100)
+        || (octets[0] == 203 && octets[1] == 0 && octets[2] == 113))
+}
+
+fn is_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => is_public_ipv4(ip),
+        IpAddr::V6(ip) => {
+            if let Some(mapped) = ip.to_ipv4_mapped() { return is_public_ipv4(mapped); }
+            let segments = ip.segments();
+            !(ip.is_loopback() || ip.is_unspecified() || ip.is_unique_local() || ip.is_unicast_link_local()
+                || ip.is_multicast() || (segments[0] & 0xffc0) == 0xfec0
+                || (segments[0] == 0x2001 && segments[1] == 0x0db8))
+        }
+    }
+}
+
+fn ensure_public_host(host: &str, port: u16) -> Result<(), String> {
+    if host.eq_ignore_ascii_case("localhost") || host.ends_with(".localhost") || host.ends_with(".local") {
+        return Err("Link previews are disabled for local network addresses.".into());
+    }
+    let addresses = (host, port).to_socket_addrs()
+        .map_err(|_| "Could not resolve this link's host for a safe preview.".to_string())?;
+    let mut found = false;
+    for address in addresses {
+        found = true;
+        if !is_public_ip(address.ip()) {
+            return Err("Link previews are disabled for local or reserved network addresses.".into());
+        }
+    }
+    if !found { return Err("Could not resolve this link's host for a safe preview.".into()); }
+    Ok(())
+}
+
+fn is_safe_asset_url(url: &str) -> bool {
+    parse_http_url(url).ok().is_some_and(|(_, host, port, _, _)| ensure_public_host(&host, port).is_ok())
+}
+
 fn fetch_html(url: &str) -> Result<(String, String), String> {
     let (secure, host, port, path, authority) = parse_http_url(url)?;
-    let agent: Vec<u16> = "UtilityX Link Preview".encode_utf16().chain(Some(0)).collect();
+    ensure_public_host(&host, port)?;
+    let agent: Vec<u16> = "Ollumi Link Preview".encode_utf16().chain(Some(0)).collect();
     let host_wide: Vec<u16> = host.encode_utf16().chain(Some(0)).collect();
     let path_wide: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
     let version: Vec<u16> = "HTTP/1.1".encode_utf16().chain(Some(0)).collect();
@@ -81,6 +134,16 @@ fn fetch_html(url: &str) -> Result<(String, String), String> {
         if request.is_null() {
             let error = format!("Could not prepare a request for {host} (Windows error {}).", GetLastError());
             WinHttpCloseHandle(connection); WinHttpCloseHandle(session);
+            return Err(error);
+        }
+        // Do not let WinHTTP follow an attacker-controlled redirect to a local
+        // service after the initial host has passed the public-address check.
+        const WINHTTP_OPTION_DISABLE_FEATURE: u32 = 63;
+        const WINHTTP_DISABLE_REDIRECTS: u32 = 0x0000_0002;
+        let mut disabled_features = WINHTTP_DISABLE_REDIRECTS;
+        if WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, (&mut disabled_features as *mut u32).cast(), std::mem::size_of::<u32>() as u32) == 0 {
+            let error = format!("Could not secure the link preview request (Windows error {}).", GetLastError());
+            WinHttpCloseHandle(request); WinHttpCloseHandle(connection); WinHttpCloseHandle(session);
             return Err(error);
         }
         let sent = WinHttpSendRequest(request, headers.as_ptr(), u32::MAX, std::ptr::null_mut(), 0, 0, 0);
@@ -112,7 +175,7 @@ fn fetch_html(url: &str) -> Result<(String, String), String> {
             body.truncate(old_len + read as usize);
         }
         WinHttpCloseHandle(request); WinHttpCloseHandle(connection); WinHttpCloseHandle(session);
-        if !(200..400).contains(&status) { return Err(format!("The page returned HTTP {status}.")); }
+        if !(200..300).contains(&status) { return Err(format!("The page returned HTTP {status}; link previews do not follow redirects.")); }
         Ok((String::from_utf8_lossy(&body).into_owned(), authority))
     }
 }
@@ -217,7 +280,7 @@ fn parse_preview(url: &str, html: &str, authority: &str) -> LinkPreview {
     let description = meta_value(html, "property", "og:description").or_else(|| meta_value(html, "name", "description"))
         .or_else(|| meta_value(html, "name", "twitter:description")).unwrap_or_default();
     let image_url = meta_value(html, "property", "og:image").or_else(|| meta_value(html, "name", "twitter:image"))
-        .map(|value| resolve_url(url, &value)).unwrap_or_default();
+        .map(|value| resolve_url(url, &value)).filter(|value| is_safe_asset_url(value)).unwrap_or_default();
     let favicon_url = {
         let lower = html.to_ascii_lowercase();
         let mut search_from = 0usize;
@@ -234,11 +297,13 @@ fn parse_preview(url: &str, html: &str, authority: &str) -> LinkPreview {
         }
         found.filter(|value| !value.is_empty()).unwrap_or_else(|| resolve_url(url, "/favicon.ico"))
     };
+    let favicon_url = if is_safe_asset_url(&favicon_url) { favicon_url } else { String::new() };
     LinkPreview { url: url.to_string(), domain, title, description, favicon_url, image_url }
 }
 
 fn get_preview_blocking(app: tauri::AppHandle, url: String) -> Result<LinkPreview, String> {
-    parse_http_url(&url)?;
+    let (_, host, port, _, _) = parse_http_url(&url)?;
+    ensure_public_host(&host, port)?;
     let _guard = CACHE_LOCK.lock().map_err(|_| "Link preview cache is temporarily unavailable.".to_string())?;
     let path = cache_path(&app)?;
     let mut cache: HashMap<String, LinkPreview> = std::fs::read(&path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default();

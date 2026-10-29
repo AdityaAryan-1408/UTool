@@ -36,6 +36,12 @@ extern "system" {
     fn GetDC(hwnd: *mut c_void) -> *mut c_void;
     fn ReleaseDC(hwnd: *mut c_void, hdc: *mut c_void) -> i32;
     fn GetSystemMetrics(index: i32) -> i32;
+    fn SetWindowDisplayAffinity(hwnd: *mut c_void, affinity: u32) -> i32;
+}
+
+#[link(name = "dwmapi")]
+extern "system" {
+    fn DwmFlush() -> i32;
 }
 
 #[link(name = "gdi32")]
@@ -143,20 +149,33 @@ pub fn capture_primary_screen() -> Result<ScreenCapture, String> {
 
 #[tauri::command]
 pub async fn capture_screen(window: tauri::WebviewWindow) -> Result<ScreenCapture, String> {
-    // Hide and restore on the Tauri command thread. Some Windows WebView
-    // backends wait for their window thread when show/hide is called from a
-    // blocking worker, leaving the frontend stuck at "Capturing screen…".
+    const WDA_NONE: u32 = 0;
+    const WDA_EXCLUDEFROMCAPTURE: u32 = 0x0000_0011;
+    // Store the raw HWND as an integer while the async command awaits its
+    // worker; raw pointers are not Send across Tauri's async IPC boundary.
+    let hwnd = window.hwnd().map_err(|error| format!("Could not access Ollumi for screen capture: {error}"))?.0 as usize;
     let was_visible = window.is_visible().unwrap_or(false);
-    if was_visible {
-        window.hide().map_err(|error| format!("Could not hide UtilityX for screen capture: {error}"))?;
+    // Prefer hiding only this window from public capture APIs. This avoids
+    // changing its visible state and prevents a DWM fade frame in the result.
+    let excluded = unsafe { SetWindowDisplayAffinity(hwnd as *mut c_void, WDA_EXCLUDEFROMCAPTURE) != 0 };
+    if !excluded && was_visible {
+        window.hide().map_err(|error| format!("Could not hide Ollumi for screen capture: {error}"))?;
     }
 
-    let capture_task = tauri::async_runtime::spawn_blocking(|| {
-        std::thread::sleep(std::time::Duration::from_millis(120));
+    let capture_task = tauri::async_runtime::spawn_blocking(move || {
+        unsafe { DwmFlush(); }
+        if !excluded {
+            // Older Windows versions may not support WDA_EXCLUDEFROMCAPTURE.
+            // The fallback has no selector mounted yet, so the longer wait is
+            // only a temporary notch hide and avoids sampling its fade.
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
         capture_primary_screen()
     }).await;
 
-    if was_visible {
+    if excluded {
+        unsafe { SetWindowDisplayAffinity(hwnd as *mut c_void, WDA_NONE); }
+    } else if was_visible {
         let _ = window.show();
         let _ = window.set_skip_taskbar(true);
         let _ = window.set_focus();

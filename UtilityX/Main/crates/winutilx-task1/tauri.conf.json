@@ -1,15 +1,18 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "WinUtilX",
+  "productName": "Ollumi",
   "version": "0.1.0",
   "identifier": "com.winutilx.desktop",
   "build": {
     "frontendDist": "../../spikes/spike-tauri-baseline/dist"
   },
+  "bundle": {
+    "icon": ["icons/icon.ico"]
+  },
   "app": {
     "windows": [
       {
-        "title": "WinUtilX",
+        "title": "Ollumi",
         "label": "main",
         "url": "index.html",
         "width": 880,

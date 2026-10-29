@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Clipboard, Copy, FileText, Image as ImageIcon, Search, Trash2, Check, ChevronUp } from 'lucide-react';
+import { Clipboard, Copy, FileText, Image as ImageIcon, Search, Trash2, Check, ChevronUp, Pause, Play } from 'lucide-react';
 import { invokeTauriStrict } from '../../utils/tauriBridge';
 import LinkPreviewCard from '../LinkPreviewCard';
+import { listenOllumiEvent } from '../../utils/ollumi';
 
 const formatTime = (timestamp) => new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(timestamp * 1000));
 
@@ -23,6 +24,7 @@ export default function ClipboardTab({ onCollapse, accent }) {
   const [filterType, setFilterType] = useState('All');
   const [copiedId, setCopiedId] = useState(null);
   const [error, setError] = useState('');
+  const [captureEnabled, setCaptureEnabled] = useState(true);
 
   const refreshItems = useCallback(async () => {
     try {
@@ -37,9 +39,9 @@ export default function ClipboardTab({ onCollapse, accent }) {
 
   useEffect(() => {
     refreshItems();
+    invokeTauriStrict('clipboard_capture_status').then(setCaptureEnabled).catch(() => {});
     const handleUpdate = () => refreshItems();
-    window.addEventListener('utilityx-clipboard-history-updated', handleUpdate);
-    return () => window.removeEventListener('utilityx-clipboard-history-updated', handleUpdate);
+    return listenOllumiEvent('ollumi-clipboard-history-updated', handleUpdate);
   }, [refreshItems]);
 
   const selectedItem = items.find((item) => item.id === selectedId) || items.at(-1) || null;
@@ -101,6 +103,17 @@ export default function ClipboardTab({ onCollapse, accent }) {
     }
   };
 
+  const toggleCapture = async () => {
+    const next = !captureEnabled;
+    try {
+      await invokeTauriStrict('clipboard_set_capture_enabled', { enabled: next });
+      setCaptureEnabled(next);
+      setError('');
+    } catch (failure) {
+      setError(failure?.message || 'Could not change clipboard capture.');
+    }
+  };
+
   const accentColor = accent?.primary || '#F5F7FF';
   const enableSearchInput = async (event) => {
     event.preventDefault();
@@ -125,6 +138,7 @@ export default function ClipboardTab({ onCollapse, accent }) {
             <button key={type} onClick={() => setFilterType(type)} style={filterType === type ? { backgroundColor: accentColor, color: '#050505' } : {}} className={`px-3 py-1 rounded-lg text-[11px] font-semibold ${filterType === type ? '' : 'text-slate-400 hover:text-white'}`}>{type}</button>
           ))}
         </div>
+        <button onClick={toggleCapture} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/5 text-slate-400 hover:text-white text-xs" title={captureEnabled ? 'Pause local clipboard history capture' : 'Resume local clipboard history capture'}>{captureEnabled ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}{captureEnabled ? 'Pause' : 'Resume'}</button>
         <button onClick={clearHistory} disabled={!items.length} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/5 text-slate-400 hover:text-rose-300 disabled:opacity-40 text-xs"><Trash2 className="w-3.5 h-3.5" /> Clear</button>
       </div>
 
@@ -134,7 +148,7 @@ export default function ClipboardTab({ onCollapse, accent }) {
             <div className="h-full min-h-32 flex flex-col items-center justify-center text-center text-slate-500 px-5">
               <Clipboard className="w-6 h-6 mb-2 opacity-60" />
               <span className="text-xs font-medium text-slate-300">{items.length ? 'No matching clipboard items' : 'Copy text or an image to start your history'}</span>
-              <span className="text-[10px] mt-1">Copied items are saved locally as you copy them.</span>
+              <span className="text-[10px] mt-1">{captureEnabled ? 'History is encrypted for this Windows account.' : 'Clipboard history capture is paused.'}</span>
             </div>
           ) : filteredItems.map((item) => (
             <div key={item.id} onClick={() => setSelectedId(item.id)} style={selectedItem?.id === item.id ? { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.22)' } : {}} className={`p-2.5 rounded-xl border transition-colors cursor-pointer flex items-center justify-between gap-2 ${selectedItem?.id === item.id ? '' : 'bg-slate-800/40 border-transparent hover:border-white/10'}`}>
@@ -168,7 +182,7 @@ export default function ClipboardTab({ onCollapse, accent }) {
       </div>
 
       <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[10px] text-slate-400">
-        <span>Copy normally anywhere. UtilityX saves text and images automatically; click Copy to put an item back on the clipboard.</span>
+        <span>Encrypted local history · 30 days or 500 items · pause capture anytime.</span>
         <button onClick={onCollapse} className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-[11px] font-medium border border-white/5"><ChevronUp className="w-3.5 h-3.5" /> Minimize</button>
       </div>
     </div>

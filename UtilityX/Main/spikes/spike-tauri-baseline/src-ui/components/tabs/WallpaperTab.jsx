@@ -108,7 +108,7 @@ export default function WallpaperTab({ activeIndex = 0, onSelectWallpaper, onCol
         await invokeTauriStrict('wallpaper_import_local', { name: file.name, bytes, previewBase64 });
       }
       await refreshLocalWallpapers();
-      setLocalNotice(`Saved ${files.length} wallpaper${files.length === 1 ? '' : 's'} to UtilityX storage.`);
+      setLocalNotice(`Saved ${files.length} wallpaper${files.length === 1 ? '' : 's'} to Ollumi storage.`);
     } catch (error) { setLocalError(error?.message || String(error)); }
     finally { setLocalLoading(false); }
   };
@@ -260,7 +260,7 @@ export default function WallpaperTab({ activeIndex = 0, onSelectWallpaper, onCol
               </motion.div>;
             })}
           </div>
-        </div> : <div className="flex h-full items-center justify-center text-center text-xs text-slate-500">No local wallpapers yet. Choose Add wallpapers to copy images into UtilityX storage.</div>}
+        </div> : <div className="flex h-full items-center justify-center text-center text-xs text-slate-500">No local wallpapers yet. Choose Add wallpapers to copy images into Ollumi storage.</div>}
       </div>}
 
       {/* 3D Cover Flow Carousel with wheel & drag support */}

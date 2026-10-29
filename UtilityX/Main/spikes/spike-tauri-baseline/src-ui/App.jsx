@@ -21,10 +21,13 @@ import ScreenshotOverlay from './components/ScreenshotOverlay';
 import DictationModal from './components/DictationModal';
 import { isTauri, invokeTauri, invokeTauriStrict } from './utils/tauriBridge';
 import { WALLPAPERS } from './utils/wallpapers';
+import { listenOllumiEvent, dispatchOllumiEvent, readPreference } from './utils/ollumi';
 
 export default function App() {
   const [isLassoOpen, setIsLassoOpen] = useState(false);
   const [isScreenshotOpen, setIsScreenshotOpen] = useState(false);
+  const [screenshotCapture, setScreenshotCapture] = useState(null);
+  const [screenshotError, setScreenshotError] = useState('');
   const [pendingScreenshot, setPendingScreenshot] = useState(null);
   const [isDictationOpen, setIsDictationOpen] = useState(false);
   const [wallpaperIndex, setWallpaperIndex] = useState(0);
@@ -39,6 +42,9 @@ export default function App() {
   useEffect(() => {
     if (isTauri) {
       invokeTauri('show_main_window');
+      let autoHide = true;
+      autoHide = readPreference('ollumi-hide-fullscreen', ['winutilx-hide-fullscreen'], 'true') !== 'false';
+      invokeTauri('set_fullscreen_autohide', { enabled: autoHide });
     }
   }, []);
 
@@ -51,22 +57,30 @@ export default function App() {
 
   const handleOpenScreenshot = async () => {
     try {
+      setScreenshotError('');
       if (isTauri) {
         // Clipboard mode makes the notch non-focusable; turn that off so the
         // full-screen region selector can receive pointer input.
         await invokeTauriStrict('set_clipboard_focus_mode', { enabled: false });
-        await invokeTauriStrict('set_fullscreen_overlay', { enabled: true });
+        const captured = await invokeTauriStrict('capture_screen');
+        setScreenshotCapture(captured);
+      } else {
+        setScreenshotError('Screen capture is available in the desktop app.');
       }
       setIsScreenshotOpen(true);
     } catch (error) {
       console.error('Could not open screen capture overlay:', error);
+      setScreenshotError(String(error?.message || error));
+      setIsScreenshotOpen(true);
     }
   };
 
   const handleCloseScreenshot = (restoreClipboardFocus = true) => {
     setIsScreenshotOpen(false);
+    setScreenshotCapture(null);
+    setScreenshotError('');
     if (isTauri) invokeTauriStrict('set_fullscreen_overlay', { enabled: false }).catch(() => {});
-    if (restoreClipboardFocus) window.dispatchEvent(new Event('utilityx-screen-capture-closed'));
+    if (restoreClipboardFocus) dispatchOllumiEvent('ollumi-screen-capture-closed');
   };
 
   // Global hotkeys (Ctrl+Shift for Lasso, Ctrl+Win for Dictation simulation)
@@ -77,7 +91,7 @@ export default function App() {
         e.preventDefault();
         handleOpenLasso(true);
       }
-      if (!isTauri && e.ctrlKey && e.shiftKey && (e.key === 'X' || e.key === 'x')) {
+      if (!isTauri && e.ctrlKey && e.altKey && (e.key === 'X' || e.key === 'x')) {
         e.preventDefault();
         handleOpenScreenshot();
       }
@@ -91,12 +105,12 @@ export default function App() {
     const handleNativeScreenCapture = () => handleOpenScreenshot();
 
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('utilityx-circle-search', handleNativeCircleSearch);
-    window.addEventListener('utilityx-screen-capture', handleNativeScreenCapture);
+    const unlistenCircleSearch = listenOllumiEvent('ollumi-circle-search', handleNativeCircleSearch);
+    const unlistenScreenCapture = listenOllumiEvent('ollumi-screen-capture', handleNativeScreenCapture);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('utilityx-circle-search', handleNativeCircleSearch);
-      window.removeEventListener('utilityx-screen-capture', handleNativeScreenCapture);
+      unlistenCircleSearch();
+      unlistenScreenCapture();
     };
   }, [isLassoOpen]);
 
@@ -142,14 +156,14 @@ export default function App() {
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
               <span className="text-xs text-slate-400 font-mono ml-2 flex items-center gap-1.5">
                 <Code2 className="w-3.5 h-3.5 text-cyan-400" />
-                winutilx-daemon.rs
+                ollumi-daemon.rs
               </span>
             </div>
             <span className="text-[10px] text-slate-500 font-mono">Rust 2024 · WS_EX_NOACTIVATE</span>
           </div>
 
           <div className="flex-1 p-4 font-mono text-[11px] text-slate-300 space-y-1.5 overflow-hidden leading-relaxed bg-slate-950/70">
-            <div><span className="text-purple-400">pub struct</span> <span className="text-cyan-300">WinUtilXDaemon</span> &#123;</div>
+            <div><span className="text-purple-400">pub struct</span> <span className="text-cyan-300">OllumiDaemon</span> &#123;</div>
             <div className="pl-4 text-slate-400">// Native Top Notch Lifecycle Manager</div>
             <div className="pl-4"><span className="text-blue-400">top_notch:</span> <span className="text-emerald-400">Stage::Idle | Stage::HoverPeek | Stage::FullApp</span>,</div>
             <div className="pl-4"><span className="text-blue-400">idle_footprint:</span> <span className="text-emerald-400">3.8 MB RAM (0.0% CPU)</span>,</div>
@@ -210,7 +224,7 @@ export default function App() {
           >
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-300 pr-3 border-r border-white/10">
               <span className="w-2 h-2 rounded-full bg-cyan-400" />
-              <span className="font-bold text-white">WinUtilX</span>
+              <span className="font-bold text-white">Ollumi</span>
             </div>
 
             <button
@@ -258,7 +272,7 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {isScreenshotOpen && <ScreenshotOverlay onClose={handleCloseScreenshot} onCaptured={(file) => { setPendingScreenshot(file); handleCloseScreenshot(false); window.dispatchEvent(new Event('utilityx-screenshot-added')); }} />}
+        {isScreenshotOpen && <ScreenshotOverlay initialCapture={screenshotCapture} initialError={screenshotError} onClose={handleCloseScreenshot} onCaptured={(file) => { setPendingScreenshot(file); handleCloseScreenshot(false); dispatchOllumiEvent('ollumi-screenshot-added'); }} />}
       </AnimatePresence>
 
       <AnimatePresence>

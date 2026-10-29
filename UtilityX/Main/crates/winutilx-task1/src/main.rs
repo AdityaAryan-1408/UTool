@@ -17,16 +17,17 @@ use std::process::Command;
 use std::{mem, ptr};
 use std::sync::mpsc::{channel, Sender, SyncSender};
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{LogicalPosition, LogicalSize, Manager};
-use windows_sys::Win32::Graphics::Gdi::{CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, SetWindowRgn, RGN_OR};
+use windows_sys::Win32::Foundation::{HWND, RECT};
+use windows_sys::Win32::Graphics::Gdi::{CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, GetMonitorInfoW, MonitorFromWindow, SetWindowRgn, MONITORINFO, MONITOR_DEFAULTTONEAREST, RGN_OR};
 use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SetThreadExecutionState, SYSTEM_POWER_STATUS};
 use windows_sys::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
-use windows_sys::Win32::System::Threading::GetCurrentProcess;
+use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetCurrentProcessId};
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
-use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+use windows_sys::Win32::UI::WindowsAndMessaging::{GetClassNameW, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, IsIconic, SW_SHOWNORMAL};
 
 #[link(name = "user32")]
 extern "system" {
@@ -37,7 +38,6 @@ extern "system" {
         fsModifiers: u32,
         vk: u32,
     ) -> i32;
-    fn UnregisterHotKey(hWnd: *mut std::ffi::c_void, id: i32) -> i32;
     fn GetMessageW(
         lpMsg: *mut windows_sys::Win32::UI::WindowsAndMessaging::MSG,
         hWnd: *mut std::ffi::c_void,
@@ -59,6 +59,13 @@ const KEYEVENTF_KEYUP: u32 = 0x0002;
 const VK_VOLUME_UP: u8 = 0xAF;
 const VK_VOLUME_DOWN: u8 = 0xAE;
 const VK_VOLUME_MUTE: u8 = 0xAD;
+const MOD_NOREPEAT: u32 = 0x4000;
+
+static AUTO_HIDE_FULLSCREEN: AtomicBool = AtomicBool::new(false);
+static USER_WANTS_NOTCH_VISIBLE: AtomicBool = AtomicBool::new(true);
+static AUTO_HIDDEN_FOR_FULLSCREEN: AtomicBool = AtomicBool::new(false);
+static FULLSCREEN_VISIBILITY_OVERRIDE: AtomicBool = AtomicBool::new(false);
+static FULLSCREEN_APP_ACTIVE: AtomicBool = AtomicBool::new(false);
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct Guid { data1: u32, data2: u16, data3: u16, data4: [u8; 8] }
@@ -351,7 +358,7 @@ fn open_windows_settings(page: String) -> Result<(), String> {
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
     if !(url.starts_with("https://") || url.starts_with("http://")) || url.chars().any(char::is_control) {
-        return Err("Only web links can be opened outside UtilityX.".into());
+        return Err("Only web links can be opened outside Ollumi.".into());
     }
     let operation: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
     let target: Vec<u16> = url.encode_utf16().chain(Some(0)).collect();
@@ -538,17 +545,142 @@ fn update_notch_stage(window: tauri::WebviewWindow, stage: String, width: f64, h
 
 #[tauri::command]
 fn toggle_notch_visibility(window: tauri::WebviewWindow) -> bool {
-    if let Ok(visible) = window.is_visible() {
-        if visible {
-            let _ = window.hide();
-            false
+    toggle_utilityx_visibility(&window)
+}
+
+fn show_utilityx_window(window: &tauri::WebviewWindow) {
+    USER_WANTS_NOTCH_VISIBLE.store(true, Ordering::Release);
+    let fullscreen = FULLSCREEN_APP_ACTIVE.load(Ordering::Acquire);
+    let override_autohide = fullscreen && AUTO_HIDE_FULLSCREEN.load(Ordering::Acquire);
+    FULLSCREEN_VISIBILITY_OVERRIDE.store(override_autohide, Ordering::Release);
+    AUTO_HIDDEN_FOR_FULLSCREEN.store(false, Ordering::Release);
+    let _ = window.show();
+    let _ = window.set_skip_taskbar(true);
+}
+
+fn toggle_utilityx_visibility(window: &tauri::WebviewWindow) -> bool {
+    let fullscreen = FULLSCREEN_APP_ACTIVE.load(Ordering::Acquire)
+        && AUTO_HIDE_FULLSCREEN.load(Ordering::Acquire);
+
+    if fullscreen && AUTO_HIDDEN_FOR_FULLSCREEN.load(Ordering::Acquire) {
+        // Let the user temporarily reveal the notch over a full-screen app.
+        FULLSCREEN_VISIBILITY_OVERRIDE.store(true, Ordering::Release);
+        AUTO_HIDDEN_FOR_FULLSCREEN.store(false, Ordering::Release);
+        show_utilityx_window(window);
+        return true;
+    }
+
+    if fullscreen && FULLSCREEN_VISIBILITY_OVERRIDE.load(Ordering::Acquire) {
+        FULLSCREEN_VISIBILITY_OVERRIDE.store(false, Ordering::Release);
+        USER_WANTS_NOTCH_VISIBLE.store(false, Ordering::Release);
+        let _ = window.hide();
+        return false;
+    }
+
+    let show = !USER_WANTS_NOTCH_VISIBLE.load(Ordering::Acquire);
+    if show {
+        show_utilityx_window(window);
+    } else {
+        USER_WANTS_NOTCH_VISIBLE.store(false, Ordering::Release);
+        FULLSCREEN_VISIBILITY_OVERRIDE.store(false, Ordering::Release);
+        let _ = window.hide();
+    }
+    show
+}
+
+fn is_fullscreen_on_notch_monitor(notch_hwnd: HWND) -> bool {
+    unsafe {
+        let foreground = GetForegroundWindow();
+        if foreground.is_null() || foreground == notch_hwnd || IsIconic(foreground) != 0 {
+            return false;
+        }
+
+        let mut foreground_pid = 0;
+        GetWindowThreadProcessId(foreground, &mut foreground_pid);
+        if foreground_pid == GetCurrentProcessId() {
+            return false;
+        }
+
+        let mut class_name = [0u16; 128];
+        let class_len = GetClassNameW(foreground, class_name.as_mut_ptr(), class_name.len() as i32);
+        if class_len > 0 {
+            let class_name = String::from_utf16_lossy(&class_name[..class_len as usize]);
+            if matches!(class_name.as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd") {
+                return false;
+            }
+        }
+
+        let notch_monitor = MonitorFromWindow(notch_hwnd, MONITOR_DEFAULTTONEAREST);
+        let foreground_monitor = MonitorFromWindow(foreground, MONITOR_DEFAULTTONEAREST);
+        if notch_monitor.is_null() || notch_monitor != foreground_monitor {
+            return false;
+        }
+
+        let mut monitor_info: MONITORINFO = zeroed();
+        monitor_info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        let mut window_rect: RECT = zeroed();
+        if GetMonitorInfoW(notch_monitor, &mut monitor_info) == 0 || GetWindowRect(foreground, &mut window_rect) == 0 {
+            return false;
+        }
+
+        let monitor_width = monitor_info.rcMonitor.right - monitor_info.rcMonitor.left;
+        let monitor_height = monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top;
+        if monitor_width <= 0 || monitor_height <= 0 {
+            return false;
+        }
+        // A maximized app normally stops at the taskbar work area, while a
+        // borderless or exclusive full-screen app covers almost the whole display.
+        let tolerance_x = (monitor_width / 100).max(4);
+        let tolerance_y = (monitor_height / 100).max(4);
+        window_rect.left <= monitor_info.rcMonitor.left + tolerance_x
+            && window_rect.top <= monitor_info.rcMonitor.top + tolerance_y
+            && window_rect.right >= monitor_info.rcMonitor.right - tolerance_x
+            && window_rect.bottom >= monitor_info.rcMonitor.bottom - tolerance_y
+    }
+}
+
+fn start_fullscreen_autohide_watcher(window: tauri::WebviewWindow) {
+    std::thread::spawn(move || loop {
+        let fullscreen = window.hwnd()
+            .map(|hwnd| is_fullscreen_on_notch_monitor(hwnd.0))
+            .unwrap_or(false);
+        FULLSCREEN_APP_ACTIVE.store(fullscreen, Ordering::Release);
+
+        if fullscreen {
+            if AUTO_HIDE_FULLSCREEN.load(Ordering::Acquire)
+                && USER_WANTS_NOTCH_VISIBLE.load(Ordering::Acquire)
+                && !FULLSCREEN_VISIBILITY_OVERRIDE.load(Ordering::Acquire)
+                && window.is_visible().unwrap_or(false)
+                && window.hide().is_ok()
+            {
+                AUTO_HIDDEN_FOR_FULLSCREEN.store(true, Ordering::Release);
+            }
         } else {
+            FULLSCREEN_VISIBILITY_OVERRIDE.store(false, Ordering::Release);
+            if AUTO_HIDDEN_FOR_FULLSCREEN.swap(false, Ordering::AcqRel)
+                && AUTO_HIDE_FULLSCREEN.load(Ordering::Acquire)
+                && USER_WANTS_NOTCH_VISIBLE.load(Ordering::Acquire)
+            {
+                let _ = window.show();
+                let _ = window.set_skip_taskbar(true);
+            }
+        }
+
+        std::thread::sleep(Duration::from_millis(400));
+    });
+}
+
+#[tauri::command]
+fn set_fullscreen_autohide(window: tauri::WebviewWindow, enabled: bool) {
+    AUTO_HIDE_FULLSCREEN.store(enabled, Ordering::Release);
+    if !enabled {
+        FULLSCREEN_VISIBILITY_OVERRIDE.store(false, Ordering::Release);
+        if AUTO_HIDDEN_FOR_FULLSCREEN.swap(false, Ordering::AcqRel)
+            && USER_WANTS_NOTCH_VISIBLE.load(Ordering::Acquire)
+        {
             let _ = window.show();
             let _ = window.set_skip_taskbar(true);
-            true
         }
-    } else {
-        true
     }
 }
 
@@ -570,8 +702,7 @@ fn set_fullscreen_overlay(window: tauri::WebviewWindow, enabled: bool) {
 
 #[tauri::command]
 fn show_main_window(window: tauri::WebviewWindow) {
-    let _ = window.show();
-    let _ = window.set_skip_taskbar(true);
+    show_utilityx_window(&window);
 }
 
 #[tauri::command]
@@ -581,6 +712,11 @@ fn set_clipboard_focus_mode(window: tauri::WebviewWindow, enabled: bool) {
 }
 
 fn main() {
+    std::panic::set_hook(Box::new(|panic| {
+        let diagnostic_path = std::env::temp_dir().join("UtilityX-startup-error.txt");
+        let details = format!("{panic}\n{}", std::backtrace::Backtrace::force_capture());
+        let _ = std::fs::write(diagnostic_path, details);
+    }));
     let arguments: Vec<String> = std::env::args().collect();
     if let Some(index) = arguments.iter().position(|argument| argument == "--utilityx-shelf-cleanup") {
         if let Some(path) = arguments.get(index + 1) {
@@ -590,7 +726,7 @@ fn main() {
         }
         return;
     }
-    tauri::Builder::default()
+    let app_result = tauri::Builder::default()
         .setup(|app| {
             clipboard::start_listener(app.handle().clone());
             wallpaper::start_cycle_scheduler(app.handle().clone());
@@ -604,6 +740,7 @@ fn main() {
                 let _ = window.set_always_on_top(true);
                 let _ = window.set_skip_taskbar(true);
                 apply_notch_region(&window, 270.0, 38.0, 16.0);
+                start_fullscreen_autohide_watcher(window.clone());
 
                 let drop_window = window.clone();
                 let drop_app = app.handle().clone();
@@ -615,19 +752,19 @@ fn main() {
                                 *region = NotchRegionMetrics { width: 840.0, height: 430.0, radius: 28.0 };
                             }
                             apply_notch_region(&drop_window, 840.0, 430.0, 28.0);
-                            let _ = drop_window.eval("window.dispatchEvent(new Event('utilityx-shelf-drag-enter'))");
+                            let _ = drop_window.eval("window.dispatchEvent(new Event('ollumi-shelf-drag-enter'))");
                         }
                         tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
                             match shelf::import_external_paths_with_ids(&drop_app, paths) {
                                 Ok(ids) => {
                                     let detail = serde_json::json!({ "count": ids.len(), "ids": ids });
                                     let detail = serde_json::to_string(&detail).unwrap_or_else(|_| "{}".into());
-                                    let js = format!("window.dispatchEvent(new CustomEvent('utilityx-shelf-files-dropped', {{ detail: {detail} }}))");
+                                    let js = format!("window.dispatchEvent(new CustomEvent('ollumi-shelf-files-dropped', {{ detail: {detail} }}))");
                                     let _ = drop_window.eval(&js);
                                 }
                                 Err(error) => {
                                     let message = serde_json::to_string(&error).unwrap_or_else(|_| "'Could not import dropped files'".into());
-                                    let _ = drop_window.eval(&format!("window.dispatchEvent(new CustomEvent('utilityx-shelf-drop-error', {{ detail: {message} }}))"));
+                                    let _ = drop_window.eval(&format!("window.dispatchEvent(new CustomEvent('ollumi-shelf-drop-error', {{ detail: {message} }}))"));
                                 }
                             }
                         }
@@ -635,25 +772,17 @@ fn main() {
                     }
                 });
 
-                println!("✅ WinUtilX Native Desktop Island Alive (full-screen transparent WebView)");
+                println!("Ollumi native desktop companion started (full-screen transparent WebView)");
 
-                // Background Global Hotkey Listener: Alt+\ and Ctrl+Shift+H to toggle visibility
+                // Register only shortcuts shown in Settings and suppress key-repeat storms.
                 let window_hotkey = window.clone();
                 let hotkey_app = app.handle().clone();
                 std::thread::spawn(move || {
                     unsafe {
-                        // Hotkey 101: Alt + \ (VK_OEM_5 = 0xDC)
-                        RegisterHotKey(std::ptr::null_mut(), 101, MOD_ALT, 0xDC);
-                        // Hotkey 102: Ctrl + Shift + H ('H' = 0x48)
-                        RegisterHotKey(std::ptr::null_mut(), 102, MOD_CONTROL | MOD_SHIFT, 0x48);
-                        // Ctrl+Shift+V pastes the clipboard history in original copy order.
-                        RegisterHotKey(std::ptr::null_mut(), 103, MOD_CONTROL | MOD_SHIFT, 0x56);
-                        // Ctrl+Shift+S starts Circle Search from any foreground app.
-                        RegisterHotKey(std::ptr::null_mut(), 104, MOD_CONTROL | MOD_SHIFT, 0x53);
-                        // Ctrl+Shift+X starts an adjustable screen capture from any foreground app.
-                        RegisterHotKey(std::ptr::null_mut(), 105, MOD_CONTROL | MOD_SHIFT, 0x58);
-                        // Alternate screen-capture binding in case another app owns Ctrl+Shift+X.
-                        RegisterHotKey(std::ptr::null_mut(), 106, MOD_CONTROL | 0x0001, 0x58);
+                        RegisterHotKey(std::ptr::null_mut(), 102, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x48);
+                        RegisterHotKey(std::ptr::null_mut(), 103, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x56);
+                        RegisterHotKey(std::ptr::null_mut(), 104, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x53);
+                        RegisterHotKey(std::ptr::null_mut(), 105, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x58);
 
                         let mut msg: windows_sys::Win32::UI::WindowsAndMessaging::MSG = zeroed();
                         while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
@@ -664,27 +793,21 @@ fn main() {
                                 }
                                 if msg.wParam == 104 {
                                     if !window_hotkey.is_visible().unwrap_or(false) {
-                                        let _ = window_hotkey.show();
-                                        let _ = window_hotkey.set_skip_taskbar(true);
+                                        show_utilityx_window(&window_hotkey);
                                     }
-                                    let _ = window_hotkey.eval("window.dispatchEvent(new Event('utilityx-circle-search'))");
+                                    let _ = window_hotkey.eval("window.dispatchEvent(new Event('ollumi-circle-search'))");
                                     continue;
                                 }
-                                if msg.wParam == 105 || msg.wParam == 106 {
+                                if msg.wParam == 105 {
                                     if !window_hotkey.is_visible().unwrap_or(false) {
-                                        let _ = window_hotkey.show();
-                                        let _ = window_hotkey.set_skip_taskbar(true);
+                                        show_utilityx_window(&window_hotkey);
                                     }
-                                    let _ = window_hotkey.eval("window.dispatchEvent(new Event('utilityx-screen-capture'))");
+                                    let _ = window_hotkey.eval("window.dispatchEvent(new Event('ollumi-screen-capture'))");
                                     continue;
                                 }
-                                if let Ok(visible) = window_hotkey.is_visible() {
-                                    if visible {
-                                        let _ = window_hotkey.hide();
-                                    } else {
-                                        let _ = window_hotkey.show();
-                                        let _ = window_hotkey.set_skip_taskbar(true);
-                                    }
+                                if msg.wParam == 102 {
+                                    toggle_utilityx_visibility(&window_hotkey);
+                                    continue;
                                 }
                             }
                         }
@@ -737,6 +860,7 @@ fn main() {
             open_external_url,
             update_notch_stage,
             toggle_notch_visibility,
+            set_fullscreen_autohide,
             set_fullscreen_overlay,
             show_main_window,
             set_clipboard_focus_mode,
@@ -746,6 +870,8 @@ fn main() {
             clipboard::clipboard_copy_item,
             clipboard::clipboard_delete_item,
             clipboard::clipboard_clear,
+            clipboard::clipboard_capture_status,
+            clipboard::clipboard_set_capture_enabled,
             shelf::shelf_list_files,
             shelf::shelf_read_file,
             shelf::shelf_store_file,
@@ -760,9 +886,16 @@ fn main() {
             shelf::shelf_import_clipboard_files,
             link_preview::get_link_preview
         ])
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|_app_handle, event| {
+        .build(tauri::generate_context!());
+    let app = match app_result {
+        Ok(app) => app,
+        Err(error) => {
+            let diagnostic_path = std::env::temp_dir().join("UtilityX-startup-error.txt");
+            let _ = std::fs::write(&diagnostic_path, format!("{error:?}"));
+            std::process::exit(101);
+        }
+    };
+    app.run(|_app_handle, event| {
             println!("Tauri Event: {:?}", event);
             if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
                 if code.is_none() {

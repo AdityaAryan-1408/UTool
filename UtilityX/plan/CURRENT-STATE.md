@@ -1,6 +1,20 @@
 ﻿# UtilityX current state
 
-Last updated: 2026-10-28
+Last updated: 2026-10-29
+
+## 2026-10-29 clipboard, network, and responsiveness hardening
+
+- Circle Search now decodes the `bitmapDataUrl` returned by native screen capture before cropping.
+- Clipboard history capture can be paused from the Clipboard tab; saved history is encrypted with the current Windows user DPAPI key, migrated from the prior plaintext format, and limited to 30 days / 500 entries. Standard clipboard privacy markers are honored.
+- Batch paste now includes only the newest five items copied in the previous 60 seconds.
+- New Wi-Fi profiles are passed to the Native Wi-Fi API in memory instead of a plaintext temporary XML file.
+- Wi-Fi scan/status now use the Native Wi-Fi API rather than parsing localized `netsh` output.
+- Link previews reject loopback/private/reserved resolved addresses and automatic HTTP redirects.
+- Installed-app scans now run on Tauri's blocking worker pool.
+- Process CPU percentages now compare process CPU-time deltas against the system CPU-time delta between samples.
+- The launcher now treats a denied state-note write as a warning and detects if the app exits during startup.
+- Tauri startup build failures and Rust panics are now written to `%TEMP%\UtilityX-startup-error.txt` for diagnosis.
+- Frontend production build and native debug build succeeded. The Codex launcher attempt exits with WebView2 `0x800700AA` (resource in use); the user reports the Main `.bat` launcher works, so manual verification should use that launcher.
 
 ## Source of truth
 
@@ -22,10 +36,13 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Latest build
 
+- Most recent full native build: 2026-10-29. The Windows executable embeds the workspace Ollumi icon; the Today hero displays it beside the welcome text. Stats Memory follows the selected accent color. Frontend production and native builds succeeded; app remains stopped at the user's direction.
+- Shelf drag-out remains removed at the user's request. Dragging files onto the notch to add them to Shelf works. The user manually launched the latest app via `Run-WinUtilX.bat` and reports it is currently running; the earlier isolated launcher/process checks were not a reliable indication of the user's desktop app state.
+- Most recent frontend and native build: 2026-10-28, restored to pushed `9ad5492`. Build succeeded with the existing unused `UnregisterHotKey` warning. The user's manual launch confirms the current version runs; no startup defect has been established.
 - Feature 6 Drop Convert was removed from the current app at the user's direction. Dragging files onto the notch still imports them into Shelf; no conversion UI or conversion code remains. The roadmap item is deferred for a future design isolated from the notch hit region.
 - Removed the converter overlay entirely after it left the always-on-top window intercepting clicks. The converter now renders inline in Shelf and cannot create a full-window layer.
 
-- Most recent full native build: 2026-10-28. Includes clipboard image previews, Shelf image thumbnails/link previews, in-memory screenshot drafts, the global Ctrl+Shift+X/Ctrl+Alt+X adjustable screen-capture shortcuts, and native drag-to-Shelf import. Frontend and native builds succeeded after converter removal; the app remains stopped.
+- The 2026-10-29 native build includes clipboard image previews, Shelf image thumbnails/link previews, in-memory screenshot drafts, the global Ctrl+Shift+X/Ctrl+Alt+X adjustable screen-capture shortcuts, native drag-to-Shelf import, and the Ollumi executable icon. Frontend and native builds succeeded; app remains stopped.
 - Latest UI change: Screenshot capture uses an opaque fallback while capture is in progress, preventing the transparent always-on-top app window from showing through. The clipboard history no longer calls an undefined queue timer setter. Native capture now returns a browser-decodable bitmap URL and performs capture work off the WebView thread; the Rectangle/Square selector remains drag-based and displays clearer region-selection guidance.
 - Screen capture is launched globally with Ctrl+Shift+X, has no Shelf button, and switches to Shelf with the selected region as a temporary in-memory draft. The capture flow restores focusability when launched from Clipboard, allowing the region selector to receive pointer input.
 - Ctrl+Alt+X is registered as an alternate capture shortcut in case Ctrl+Shift+X is already claimed by another application. Settings and Shelf mention both.
@@ -35,6 +52,7 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 
 ## Change log
 
+- 2026-10-28: Compared latest pushed source (`9ad5492`) with second-last (`e9ed738`) in isolated launcher checks. Those checks reported early process exits, but the user then launched the latest version manually via `Run-WinUtilX.bat` and confirmed it is running with drag-to-Shelf working. The earlier process check was misleading and is not evidence of an app startup defect. Shelf drag-out remains removed at the user's direction.
 - 2026-10-28: Removed Feature 6's converter UI, conversion handlers/module, and converter-related notch focus/region state after repeated invisible-window behavior. Kept native drag-to-Shelf import and the browser-side duplicate-import guard. Frontend and native builds succeeded; app remains stopped.
 
 - 2026-10-28: Fixed Shelf file-drop handling so native Tauri imports are not duplicated by the browser drop handler, and imported files no longer auto-open the conversion sheet. Replaced the converter overlay with an inline Shelf panel; opening it now restores focusability and reasserts the native expanded hit region, and blur will not hide the notch while conversion is active. Frontend and native builds succeeded; canonical UtilityX is running as PID 33232 for manual verification.
@@ -112,6 +130,23 @@ The `spike-tauri-baseline` folder name is historical. Its React UI is the fronte
 - 2026-10-26: Switched Circle Search from Gemini to Groq's Qwen 3.8 27B vision model using Groq Chat Completions with a base64 image data URL. Updated API-key settings and DPAPI storage to Groq, and remove the obsolete encrypted Gemini key when a Groq key is saved or removed. Removed the Gemini web-grounding action because it is not available through this Groq request; the separate Google text-search action remains. Frontend production build and native build succeeded (one existing unused `UnregisterHotKey` warning); launched canonical app as PID 31460 for key entry and manual verification.
 
 - 2026-10-20: Moved Shelf to the first tab and Controls to second-last. Implemented persistent per-item Shelf storage under the app's local app-data folder, restore on app start, native Windows file drag-out, open with the system default app, reveal in Explorer, copy-file-to-clipboard for pasting into other apps, download, remove, clear, WebP conversion, and ZIP creation. Frontend production build and native `cargo check` succeeded. The app has not been launched for runtime testing; the user will verify the features manually.
+- 2026-10-28: Changed Screen Capture from Ctrl+Alt+S to Ctrl+Alt+Shift+X to avoid the HP system-info shortcut on Ctrl+Shift+S. Updated native registration, Settings, Shelf guidance, and browser preview. UI and native builds succeeded. Launch attempt failed because WebView2 reported HRESULT 0x800700AA (the requested resource is in use); the canonical app is currently stopped, and runtime shortcut verification remains pending.
+- 2026-10-28: Changed Screen Capture to the three-key Ctrl+Alt+X chord. Mounted the opaque capture selector before expanding the full-screen native hit region, and waited for DWM composition to finish hiding the app before grabbing pixels to avoid capturing a fading UtilityX frame. UI production build and native build succeeded. Launch retry still exits because WebView2 reports HRESULT 0x800700AA (requested resource in use); app is stopped and runtime verification is pending.
+- 2026-10-29: Refactored Screen Capture to obtain the desktop bitmap before opening the selector. Temporarily applies `WDA_EXCLUDEFROMCAPTURE` to UtilityX so the GDI capture can omit its own window without hiding/showing it; uses a 300 ms hide-and-wait fallback when the affinity API is unavailable. The selector opens with the bitmap preloaded, avoiding an opaque loading frame and the prior expanded-settings flash. UI and native builds succeeded. Runtime verification of GDI exclusion and visual transitions remains pending.
+- 2026-10-28: Removed unimplemented startup and interface-sound settings, removed the unsupported Alt+backslash and Dictation shortcut claims, and aligned Settings/help with the native Ctrl+Shift+H, Ctrl+Shift+S, Ctrl+Alt+S, and Ctrl+Shift+V bindings. Added a persisted full-screen auto-hide preference and a native 400 ms foreground-window monitor check scoped to the notch's display; it hides only when another app covers that display and restores after leaving full screen. UI production build and native `cargo check` succeeded. The app was already running during the changes, so its current process is still the previous build; close it and launch with `Main/Run-WinUtilX.bat` or `Main/Start-UtilityX.ps1` to run the new native behavior. Runtime testing remains pending.
+
+- 2026-10-29: Audited first-run personal data and began Stage 2 rebrand. Clipboard history, Shelf files, and local wallpapers are stored per-user under Tauri app data and are not shipped as project fixtures; new installs start with empty histories and local libraries. Removed the hardcoded Aditya greeting fallback (blank name now shows only the time greeting). Rebranded the active app UI/window to Ollumi, introduced five accent presets and AMOLED/Frosted Glass surfaces, migrated existing frontend preferences from the prior WinUtilX/UtilityX localStorage keys, and standardized native/frontend events to `ollumi-*` with listeners that retain old event-name compatibility. Kept the Tauri identifier `com.winutilx.desktop` to preserve existing user data and the Shelf expiry task location across upgrades. `npm.cmd run build` and `cargo build` succeeded; runtime appearance verification pending.
+- 2026-10-29: Updated the Stats Memory gauge to follow the selected accent color. Added a compact personalized welcome hero to Today and increased the Today tab height to fit it. Frontend production and native builds succeeded; app remains stopped at the user's direction.
+- 2026-10-29: Applied the workspace `Icon.png` as the Windows executable icon and as the image beside the Today welcome hero. Frontend production and native builds succeeded; the app remains stopped.
+
+
+
+
+
+
+
+
+
 
 
 

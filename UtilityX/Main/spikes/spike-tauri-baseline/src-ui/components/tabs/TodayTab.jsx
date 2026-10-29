@@ -19,16 +19,25 @@ import {
   Wind,
   Zap,
 } from 'lucide-react';
+import { readPreference } from '../../utils/ollumi';
+import { getNotchGreeting } from '../../utils/notchGreeting';
+import ollumiIcon from '../../assets/ollumi-icon.png';
 
-const TODO_STORAGE_KEY = 'utilityx-today-todos';
-const NOTES_STORAGE_KEY = 'utilityx-today-note';
-const TIMER_STORAGE_KEY = 'utilityx-today-focus-timer';
-const WEATHER_LOCATION_KEY = 'utilityx-today-weather-location';
+const TODO_STORAGE_KEY = 'ollumi-today-todos';
+const NOTES_STORAGE_KEY = 'ollumi-today-note';
+const TIMER_STORAGE_KEY = 'ollumi-today-focus-timer';
+const WEATHER_LOCATION_KEY = 'ollumi-today-weather-location';
+const LEGACY_KEYS = {
+  [TODO_STORAGE_KEY]: 'utilityx-today-todos',
+  [NOTES_STORAGE_KEY]: 'utilityx-today-note',
+  [TIMER_STORAGE_KEY]: 'utilityx-today-focus-timer',
+  [WEATHER_LOCATION_KEY]: 'utilityx-today-weather-location',
+};
 const FOCUS_PRESETS = [25, 50];
 
 function readStored(key, fallback) {
   try {
-    const value = localStorage.getItem(key);
+    const value = readPreference(key, [LEGACY_KEYS[key]].filter(Boolean), null);
     return value === null ? fallback : JSON.parse(value);
   } catch { return fallback; }
 }
@@ -102,7 +111,7 @@ async function fetchWeather(latitude, longitude) {
   return result.current;
 }
 
-export default function TodayTab({ onCollapse, accent }) {
+export default function TodayTab({ onCollapse, accent, displayName = '' }) {
   const [now, setNow] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
   const [todos, setTodos] = useState(() => {
@@ -124,6 +133,7 @@ export default function TodayTab({ onCollapse, accent }) {
 
   const accentColor = accent?.primary || '#F5F7FF';
   const activeTextColor = accent?.activeText || '#000000';
+  const greeting = getNotchGreeting(displayName, now);
   const week = useMemo(() => getWeek(now), [now]);
   const selectedTodos = todos.filter((todo) => todo.date === selectedDate);
   const completedCount = selectedTodos.filter((todo) => todo.done).length;
@@ -245,6 +255,13 @@ export default function TodayTab({ onCollapse, accent }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2.5 text-white">
+      <div className="flex h-[58px] shrink-0 items-center gap-3 rounded-2xl border border-white/5 bg-slate-900/60 px-4">
+        <img src={ollumiIcon} alt="Ollumi" className="h-10 w-10 shrink-0 rounded-xl object-cover" />
+        <div className="min-w-0">
+          <div className="text-[13px] font-bold text-white">Welcome to Ollumi</div>
+          <div className="truncate text-[10px] text-slate-400">{greeting.text}</div>
+        </div>
+      </div>
       <div className="grid min-h-0 flex-1 grid-cols-12 gap-3">
         <div className="col-span-3 flex min-h-0 flex-col gap-3">
           <div className="flex h-[104px] shrink-0 flex-col items-center justify-center rounded-2xl border border-white/5 bg-slate-900/60 text-center">
@@ -318,7 +335,7 @@ export default function TodayTab({ onCollapse, accent }) {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-[11px] font-semibold text-white">Focus timer</div>
-                <div className="text-[9px] text-slate-500">Timer continues while UtilityX is closed</div>
+                <div className="text-[9px] text-slate-500">Timer continues while Ollumi is closed</div>
               </div>
               <select value={timer.duration / 60} onChange={(event) => changeTimerPreset(Number(event.target.value))} disabled={timer.running} aria-label="Focus timer duration" className="rounded-lg border border-white/10 bg-slate-950 px-1.5 py-1 text-[10px] text-slate-300 outline-none disabled:opacity-50">
                 {FOCUS_PRESETS.map((minutes) => <option key={minutes} value={minutes}>{minutes} min</option>)}

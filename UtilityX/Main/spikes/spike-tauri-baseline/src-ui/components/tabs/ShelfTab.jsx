@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { invokeTauriStrict, isTauri } from '../../utils/tauriBridge';
 import LinkPreviewCard from '../LinkPreviewCard';
+import { listenOllumiEvent } from '../../utils/ollumi';
 
 const ZIP_CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -183,7 +184,7 @@ async function createZipFile(items) {
   write32(endView, 16, localOffset);
   write16(endView, 20, 0);
 
-  const fileName = `UtilityX_Shelf_${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
+  const fileName = `Ollumi_Shelf_${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
   return new File([...localParts, ...directoryParts, endRecord], fileName, { type: 'application/zip' });
 }
 
@@ -305,14 +306,14 @@ export default function ShelfTab({ onCollapse, accent, pendingScreenshot, onClea
     const handleDropError = (event) => showToast(event.detail || 'Could not add dropped files');
     const handleEmptyPaste = () => showToast('Clipboard does not contain files');
     restoreOnOpen();
-    window.addEventListener('utilityx-shelf-files-dropped', handleFilesDropped);
-    window.addEventListener('utilityx-shelf-drop-error', handleDropError);
-    window.addEventListener('utilityx-shelf-paste-empty', handleEmptyPaste);
+    const unlistenDropped = listenOllumiEvent('ollumi-shelf-files-dropped', handleFilesDropped);
+    const unlistenDropError = listenOllumiEvent('ollumi-shelf-drop-error', handleDropError);
+    const unlistenPasteEmpty = listenOllumiEvent('ollumi-shelf-paste-empty', handleEmptyPaste);
     return () => {
       cancelled = true;
-      window.removeEventListener('utilityx-shelf-files-dropped', handleFilesDropped);
-      window.removeEventListener('utilityx-shelf-drop-error', handleDropError);
-      window.removeEventListener('utilityx-shelf-paste-empty', handleEmptyPaste);
+      unlistenDropped();
+      unlistenDropError();
+      unlistenPasteEmpty();
     };
   }, []);
 
@@ -496,7 +497,7 @@ export default function ShelfTab({ onCollapse, accent, pendingScreenshot, onClea
               <span className="text-xs font-bold tracking-wide">The Drop Shelf</span>
               <span style={{ backgroundColor: accentBg, borderColor: accentBorder, color: accentColor }} className="rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold">Saved on device</span>
             </div>
-            <p className="truncate text-[10px] text-slate-400">Files stay local and auto-delete after 3 days. Capture a temporary screen region with Ctrl+Shift+X or Ctrl+Alt+X.</p>
+            <p className="truncate text-[10px] text-slate-400">Files stay local and auto-delete after 3 days. Capture a temporary screen region with Ctrl+Alt+X.</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
