@@ -9,7 +9,7 @@ This guide walks through how to package **Ollumi** into a standalone Windows ins
 Tauri generates standalone, production-ready Windows installers out of the box:
 * **`Ollumi_x.x.x_x64-setup.exe` (NSIS Installer)**: Standard setup wizard. Installs the application, creates Start Menu and Desktop shortcuts, registers the uninstaller in Windows Settings, and launches Ollumi. **(Recommended default for distribution)**
 * **`Ollumi_x.x.x_x64_en-US.msi` (MSI Package)**: Windows Installer package designed for enterprise deployment.
-* **`Ollumi.exe` (Portable Binary)**: Self-contained executable requiring no installation.
+* **`Ollumi_<version>.exe` (Portable Binary)**: Versioned executable requiring no installation (for example, `Ollumi_0.1.1.exe`).
 
 ---
 
@@ -21,8 +21,9 @@ Make sure your `tauri.conf.json` in `UtilityX/Main/crates/winutilx-task1/tauri.c
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Ollumi",
-  "version": "0.1.0",
-  "identifier": "com.ollumi.desktop",
+  "version": "0.1.1",
+  "mainBinaryName": "Ollumi_0.1.1",
+  "identifier": "com.winutilx.desktop",
   "build": {
     "frontendDist": "../../spikes/spike-tauri-baseline/dist"
   },
@@ -68,27 +69,20 @@ Make sure your `tauri.conf.json` in `UtilityX/Main/crates/winutilx-task1/tauri.c
 
 ## Step 2: Build the Production Release Locally
 
-Run the following commands in PowerShell from the project root:
+Run the release script from `UtilityX\Main` in PowerShell:
 
-### 1. Build the React Frontend
 ```powershell
-cd "d:\Aditya\Code\Projects\UTool\UtilityX\Main\spikes\spike-tauri-baseline"
-npm install
-npm run build
+cd "d:\Aditya\Code\Projects\UTool\UtilityX\Main"
+.\Build-Ollumi-Release.ps1
 ```
-*Output: Production static assets compiled into `dist/`.*
 
-### 2. Build the Tauri Native Binary & Windows Installer
+The script builds the frontend, reads the semantic version from `tauri.conf.json`, and sets the packaged main executable name to `Ollumi_<version>.exe`. By default it produces the versioned release executable and NSIS installer. The Cargo debug target remains `winutilx-task1.exe` for the development launcher.
+
+To also build the MSI package, run:
+
 ```powershell
-cd "d:\Aditya\Code\Projects\UTool\UtilityX\Main\crates\winutilx-task1"
-cargo tauri build
+.\Build-Ollumi-Release.ps1 -IncludeMsi
 ```
-*(If the Tauri CLI is not installed globally, install it once via `cargo install tauri-cli --version "^2.0.0"` or run `npx @tauri-apps/cli build`).*
-
-This command automatically:
-1. Strips and optimizes the Rust binary with release profile settings.
-2. Embeds the frontend bundle directly inside the executable.
-3. Generates the NSIS installer executable.
 
 ---
 
@@ -101,11 +95,11 @@ UtilityX/Main/target/release/
 
 Key output files:
 * **NSIS Setup Installer**:
-  `target/release/bundle/nsis/Ollumi_0.1.0_x64-setup.exe`
+  `target/release/bundle/nsis/Ollumi_0.1.1_x64-setup.exe`
 * **MSI Installer**:
-  `target/release/bundle/msi/Ollumi_0.1.0_x64_en-US.msi`
+  `target/release/bundle/msi/Ollumi_0.1.1_x64_en-US.msi` (produced with `-IncludeMsi`)
 * **Portable Executable**:
-  `target/release/Ollumi.exe`
+  `target/release/Ollumi_0.1.1.exe` (replace `0.1.1` with the configured version)
 
 ---
 
@@ -114,8 +108,8 @@ Key output files:
 ### 1. Tag the Release in Git
 ```powershell
 git add .
-git commit -m "chore: release v0.1.0"
-git tag v0.1.0
+git commit -m "chore: release v0.1.1"
+git tag v0.1.1
 git push origin main --tags
 ```
 
@@ -123,12 +117,12 @@ git push origin main --tags
 1. Open your repository on [GitHub](https://github.com).
 2. Click on **Releases** on the right side of the repository home page.
 3. Click **Draft a new release**.
-4. In **Choose a tag**, select `v0.1.0`.
-5. Enter a **Release title** (e.g. `Ollumi v0.1.0 — Desktop Companion`).
+4. In **Choose a tag**, select `v0.1.1`.
+5. Enter a **Release title** (e.g. `Ollumi v0.1.1 — Desktop Companion`).
 6. Add release notes describing the features.
 7. Under **Attach binaries by dropping them here or selecting them**, upload:
-   - `Ollumi_0.1.0_x64-setup.exe` (Primary installer)
-   - `Ollumi.exe` (Optional standalone portable version)
+   - `Ollumi_0.1.1_x64-setup.exe` (Primary installer)
+   - `Ollumi_0.1.1.exe` (Optional standalone portable version; use the configured version)
 8. Click **Publish release**.
 
 ---

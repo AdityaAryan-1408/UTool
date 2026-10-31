@@ -1,6 +1,15 @@
 ﻿# UtilityX current state
 
-Last updated: 2026-10-29
+Last updated: 2026-10-31
+
+## 2026-10-31 Shelf security fixes and 0.1.1 release build
+
+- Removed recurring Shelf Scheduled Task creation and the `--utilityx-shelf-cleanup <path>` startup mode. Shelf expiry now runs best-effort at app startup and Shelf operations, with a process-wide cleanup mutex and the three-day retention policy unchanged.
+- Added canonical app-data Shelf validation, direct-file cleanup only, and reparse-point skipping. Startup migration checks the exact legacy task name and removes it only when its action matches Ollumi's prior executable, install directory, cleanup arguments, and canonical Shelf path.
+- Migration marker v2 is written only after Task Scheduler confirms the task is absent, either initially or after deletion; failed listing, deletion, or post-delete confirmation leaves migration eligible to retry. Unit tests cover this marker policy and exact-name CSV parsing.
+- `cargo test -p winutilx-task1` passed all nine tests. Tests use temporary directories and do not alter real Scheduled Tasks. Symbolic-file-link creation was unavailable without a Windows privilege; the outside-directory junction test passed. `cargo fmt --all -- --check` remains unavailable because `rustfmt` is not installed.
+- Version is now `0.1.1`. `Build-Ollumi-Release.ps1` produced `Ollumi_0.1.1.exe` and its NSIS installer. Added an NSIS post-install hook that removes older versioned Ollumi binaries from the app install folder; the 0.1.0-to-0.1.1 upgrade and silent uninstall were verified in a workspace-local test directory.
+- The installed 0.1.1 app launched twice and stayed running with a separate WebView2 profile. A GUI drag-and-drop test and expiry cleanup against the actual app could not be completed because this sandbox blocks writes to the existing `%APPDATA%` profile. The existing app-data folders remained present and unchanged. No legacy Scheduled Task was found on this machine. MSI linking remains subject to Windows Installer service availability; default release output is NSIS.
 
 ## 2026-10-29 clipboard, network, and responsiveness hardening
 
@@ -23,9 +32,10 @@ Last updated: 2026-10-29
 - UI source: `UtilityX/Main/spikes/spike-tauri-baseline/src-ui`
 - UI build project: `UtilityX/Main/spikes/spike-tauri-baseline`
 - Supported build and launch entry point: `UtilityX/Main/Start-UtilityX.ps1`
-- Authoritative built executable: `UtilityX/Main/target/debug/winutilx-task1.exe`
+- Development debug executable: `UtilityX/Main/target/debug/winutilx-task1.exe`
+- Versioned release executable: `UtilityX/Main/target/release/Ollumi_0.1.0.exe`
 
-The `spike-tauri-baseline` folder name is historical. Its React UI is the frontend consumed by the native `winutilx-task1` Tauri app, as configured in `crates/winutilx-task1/tauri.conf.json`.
+The `spike-tauri-baseline` folder name is historical. Its React UI is the frontend consumed by the native `winutilx-task1` Tauri app, as configured in `crates/winutilx-task1/tauri.conf.json`. Cargo's debug target retains that development name; the release build script uses Tauri's main binary name override for the versioned Ollumi filename.
 
 ## Launch rules
 

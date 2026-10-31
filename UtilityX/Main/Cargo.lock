@@ -4235,8 +4235,9 @@ dependencies = [
 
 [[package]]
 name = "winutilx-task1"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
+ "quick-xml",
  "serde",
  "serde_json",
  "tauri",

@@ -1,7 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Ollumi",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "mainBinaryName": "Ollumi_0.1.1",
   "identifier": "com.winutilx.desktop",
   "build": {
     "frontendDist": "../../spikes/spike-tauri-baseline/dist"
@@ -12,7 +13,8 @@
     "icon": ["icons/icon.ico"],
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+                    "installMode": "currentUser",
+                    "installerHooks": "../../windows/nsis-hooks.nsh"
       }
     }
   },

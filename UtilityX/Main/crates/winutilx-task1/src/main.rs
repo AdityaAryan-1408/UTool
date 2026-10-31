@@ -717,17 +717,10 @@ fn main() {
         let details = format!("{panic}\n{}", std::backtrace::Backtrace::force_capture());
         let _ = std::fs::write(diagnostic_path, details);
     }));
-    let arguments: Vec<String> = std::env::args().collect();
-    if let Some(index) = arguments.iter().position(|argument| argument == "--utilityx-shelf-cleanup") {
-        if let Some(path) = arguments.get(index + 1) {
-            let _ = shelf::cleanup_expired_shelf_at_path(std::path::Path::new(path));
-        } else {
-            let _ = shelf::cleanup_expired_shelf_for_current_user();
-        }
-        return;
-    }
     let app_result = tauri::Builder::default()
         .setup(|app| {
+            shelf::migrate_legacy_expiry_task(app.handle());
+            let _ = shelf::cleanup_expired_shelf(app.handle(), true);
             clipboard::start_listener(app.handle().clone());
             wallpaper::start_cycle_scheduler(app.handle().clone());
             if let Some(window) = app.get_webview_window("main") {
